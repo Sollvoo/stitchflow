@@ -3,58 +3,94 @@
 {% block title %}Nouvelle conversion{% endblock %}
 
 {% block content %}
-<div class="max-w-xl mx-auto">
-  <div class="card bg-base-100 shadow-lg">
-    <div class="card-body">
-      <h2 class="card-title text-2xl mb-1">Uploader un fichier SVG</h2>
-      <p class="text-base-content/60 text-sm mb-6">
-        Formats acceptés : <strong>.svg</strong> — Taille maximale : 10 Mo
-      </p>
+<div class="max-w-lg mx-auto">
 
-      <form method="post" enctype="multipart/form-data" x-data="{ fileName: '' }">
+  <!-- Header -->
+  <div class="mb-8 text-center">
+    <div class="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center text-3xl mx-auto mb-4">📁</div>
+    <h1 class="text-2xl font-bold text-base-content">Nouvelle conversion</h1>
+    <p class="text-sm text-base-content/50 mt-1">SVG → PES via Ink/Stitch</p>
+  </div>
+
+  <div class="card bg-base-100 shadow-lg border border-base-200">
+    <div class="card-body gap-6">
+
+      <form method="post" enctype="multipart/form-data" x-data="{ fileName: '', dragging: false }">
         {% csrf_token %}
 
         <!-- Erreurs globales -->
         {% if form.non_field_errors %}
-        <div role="alert" class="alert alert-error mb-4">
-          {% for error in form.non_field_errors %}
-          <span>{{ error }}</span>
+        <div role="alert" class="alert alert-error">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          {% for error in form.non_field_errors %}<span>{{ error }}</span>{% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Zone de dépôt fichier -->
+        <div
+          class="border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all"
+          :class="dragging ? 'border-primary bg-primary/5' : 'border-base-300 hover:border-primary/50 hover:bg-base-50'"
+          @dragover.prevent="dragging = true"
+          @dragleave.prevent="dragging = false"
+          @drop.prevent="dragging = false; fileName = $event.dataTransfer.files[0]?.name || ''; $refs.fileInput.files = $event.dataTransfer.files"
+          @click="$refs.fileInput.click()"
+        >
+          <div x-show="!fileName">
+            <div class="text-4xl mb-3">🗂️</div>
+            <p class="font-semibold text-base-content">Glissez votre fichier SVG ici</p>
+            <p class="text-sm text-base-content/50 mt-1">ou cliquez pour sélectionner</p>
+            <div class="mt-4">
+              <span class="badge badge-ghost badge-sm">.svg</span>
+              <span class="badge badge-ghost badge-sm ml-1">max 10 Mo</span>
+            </div>
+          </div>
+          <div x-show="fileName" x-cloak>
+            <div class="text-4xl mb-3">✅</div>
+            <p class="font-semibold text-success" x-text="fileName"></p>
+            <p class="text-xs text-base-content/40 mt-1">Cliquez pour changer de fichier</p>
+          </div>
+
+          <input
+            x-ref="fileInput"
+            type="file"
+            name="{{ form.original_file.html_name }}"
+            accept=".svg,image/svg+xml"
+            class="hidden"
+            @change="fileName = $event.target.files[0]?.name || ''"
+            required
+          />
+        </div>
+
+        <!-- Erreur fichier -->
+        {% if form.original_file.errors %}
+        <div role="alert" class="alert alert-error alert-sm">
+          {% for error in form.original_file.errors %}
+          <span class="text-sm">{{ error }}</span>
           {% endfor %}
         </div>
         {% endif %}
 
-        <!-- Champ fichier -->
-        <div class="form-control w-full mb-4">
-          <label class="label">
-            <span class="label-text font-medium">Fichier SVG</span>
-          </label>
-          <input
-            type="file"
-            name="{{ form.original_file.html_name }}"
-            accept=".svg,image/svg+xml"
-            class="file-input file-input-bordered w-full {% if form.original_file.errors %}file-input-error{% endif %}"
-            @change="fileName = $event.target.files[0]?.name || ''"
-            required
-          />
-          {% if form.original_file.errors %}
-          <label class="label">
-            <span class="label-text-alt text-error">
-              {% for error in form.original_file.errors %}{{ error }}{% endfor %}
-            </span>
-          </label>
-          {% endif %}
-          <template x-if="fileName">
-            <p class="mt-2 text-sm text-base-content/60">Fichier sélectionné : <span x-text="fileName" class="font-mono"></span></p>
-          </template>
-        </div>
-
-        <div class="card-actions justify-end mt-2">
-          <button type="submit" class="btn btn-primary w-full">
-            Lancer la conversion
-          </button>
-        </div>
+        <!-- Submit -->
+        <button type="submit" class="btn btn-primary w-full gap-2" :disabled="!fileName">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+          Lancer la conversion
+        </button>
       </form>
+
     </div>
   </div>
+
+  <!-- Info -->
+  <div class="mt-6 flex items-start gap-3 text-sm text-base-content/50 px-2">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0 mt-0.5 text-info" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+    La conversion est asynchrone. Vous serez redirigé vers la page de suivi en temps réel.
+  </div>
+
 </div>
 {% endblock %}

@@ -6,53 +6,55 @@
 <div class="max-w-2xl mx-auto">
 
   <!-- Breadcrumb -->
-  <div class="breadcrumbs text-sm mb-6">
+  <div class="breadcrumbs text-sm mb-6 text-base-content/50">
     <ul>
-      <li><a href="/">Accueil</a></li>
-      <li><a href="{% url 'conversions:upload' %}">Conversions</a></li>
-      <li>Job {{ job.id|truncatechars:12 }}</li>
+      <li><a href="/" class="hover:text-primary">Accueil</a></li>
+      <li><a href="{% url 'conversions:upload' %}" class="hover:text-primary">Conversions</a></li>
+      <li class="font-mono text-xs">{{ job.id|truncatechars:12 }}</li>
     </ul>
   </div>
 
-  <div class="card bg-base-100 shadow-lg">
-    <div class="card-body">
+  <!-- Statut HTMX — carte principale -->
+  {% include "conversions/partials/conversion_status.html" %}
 
-      <h2 class="card-title text-xl mb-4">Détail de la conversion</h2>
-
-      <!-- Infos du job -->
-      <div class="overflow-x-auto mb-6">
-        <table class="table table-sm">
+  <!-- Détails techniques (réduit) -->
+  <details class="mt-4">
+    <summary class="text-sm text-base-content/40 cursor-pointer hover:text-base-content/70 transition-colors select-none">
+      Détails techniques
+    </summary>
+    <div class="card bg-base-100 border border-base-200 mt-2">
+      <div class="card-body py-3 px-4">
+        <table class="table table-xs">
           <tbody>
             <tr>
-              <th class="w-1/3">Identifiant</th>
+              <th class="text-base-content/50 font-normal w-1/3">ID</th>
               <td class="font-mono text-xs">{{ job.id }}</td>
             </tr>
             <tr>
-              <th>Format source</th>
-              <td class="uppercase font-semibold">{{ job.source_format }}</td>
+              <th class="text-base-content/50 font-normal">Format</th>
+              <td><span class="badge badge-ghost badge-sm uppercase">{{ job.source_format }}</span></td>
             </tr>
             <tr>
-              <th>Créé le</th>
+              <th class="text-base-content/50 font-normal">Créé</th>
               <td>{{ job.created_at|date:"d/m/Y à H:i:s" }}</td>
             </tr>
             <tr>
-              <th>Mis à jour</th>
+              <th class="text-base-content/50 font-normal">Mis à jour</th>
               <td>{{ job.updated_at|date:"d/m/Y à H:i:s" }}</td>
             </tr>
           </tbody>
         </table>
       </div>
-
-      <!-- Zone de statut HTMX -->
-      <div class="divider">Statut</div>
-      {% include "conversions/partials/conversion_status.html" %}
-
     </div>
-  </div>
+  </details>
 
-  <div class="mt-4 text-center">
-    <a href="{% url 'conversions:upload' %}" class="btn btn-ghost btn-sm">
-      ← Nouvelle conversion
+  <!-- Retour -->
+  <div class="mt-6 text-center">
+    <a href="{% url 'conversions:upload' %}" class="btn btn-ghost btn-sm gap-1 text-base-content/50">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+      </svg>
+      Nouvelle conversion
     </a>
   </div>
 

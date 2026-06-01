@@ -89,9 +89,11 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
 
 # Vite integration — manifest at src/frontend/static/dist/.vite/manifest.json
+# VITE_DEV_MODE=True dans .env uniquement quand Vite dev server tourne (npm run dev)
+# Par défaut False : utilise les fichiers buildés (npm run build)
 DJANGO_VITE = {
     'default': {
-        'dev_mode': DEBUG,
+        'dev_mode': config('VITE_DEV_MODE', default=False, cast=bool),
         'dev_server_port': 5173,
         'manifest_path': BASE_DIR / 'frontend' / 'static' / 'dist' / '.vite' / 'manifest.json',
     }

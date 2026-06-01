@@ -4,47 +4,73 @@
   hx-get="{% url 'conversions:status' job.id %}"
   hx-trigger="every 2s"
   hx-swap="outerHTML"
-  class="flex flex-col items-center gap-4 py-6"
+  class="card bg-base-100 shadow-lg border border-base-200"
 >
-  <span class="loading loading-spinner loading-lg text-primary"></span>
-  <div class="text-center">
+  <div class="card-body items-center text-center py-12">
+    <span class="loading loading-spinner loading-lg text-primary mb-4"></span>
     {% if job.status == 'pending' %}
-    <p class="font-semibold text-base-content">En attente de traitement…</p>
-    <p class="text-sm text-base-content/50 mt-1">Votre fichier est en file d'attente.</p>
+    <h3 class="text-lg font-semibold text-base-content">En attente…</h3>
+    <p class="text-sm text-base-content/50 mt-1">Votre fichier est en file d'attente</p>
+    <div class="badge badge-warning badge-outline mt-3">pending</div>
     {% else %}
-    <p class="font-semibold text-base-content">Conversion en cours…</p>
-    <p class="text-sm text-base-content/50 mt-1">Ink/Stitch génère votre fichier PES.</p>
+    <h3 class="text-lg font-semibold text-base-content">Conversion en cours…</h3>
+    <p class="text-sm text-base-content/50 mt-1">Ink/Stitch génère votre fichier PES</p>
+    <div class="badge badge-info badge-outline mt-3">processing</div>
     {% endif %}
+    <div class="mt-6 w-full max-w-xs">
+      <progress class="progress progress-primary w-full"></progress>
+    </div>
   </div>
 </div>
 
 {% elif job.status == 'completed' %}
-<div id="conversion-status" class="flex flex-col items-center gap-4 py-6">
-  <div class="text-6xl">✅</div>
-  <div class="text-center">
-    <p class="font-semibold text-success text-lg">Conversion terminée !</p>
-    <p class="text-sm text-base-content/50 mt-1">Votre fichier PES est prêt.</p>
+<div id="conversion-status" class="card bg-base-100 shadow-lg border border-success/30">
+  <div class="card-body items-center text-center py-12">
+    <div class="w-20 h-20 rounded-full bg-success/10 flex items-center justify-center mb-4">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+      </svg>
+    </div>
+    <h3 class="text-xl font-bold text-success">Conversion réussie !</h3>
+    <p class="text-sm text-base-content/50 mt-1 mb-6">Votre fichier PES est prêt à être utilisé</p>
+    {% if job.output_file %}
+    <a href="{% url 'conversions:download' job.id %}" class="btn btn-success btn-lg gap-2 shadow">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+      </svg>
+      Télécharger le fichier .PES
+    </a>
+    {% endif %}
+    <div class="badge badge-success badge-outline mt-4">completed</div>
   </div>
-  {% if job.output_file %}
-  <a href="{% url 'conversions:download' job.id %}" class="btn btn-success btn-lg mt-2">
-    ⬇️ Télécharger le fichier PES
-  </a>
-  {% endif %}
 </div>
 
 {% elif job.status == 'failed' %}
-<div id="conversion-status" class="flex flex-col items-center gap-4 py-6">
-  <div class="text-6xl">❌</div>
-  <div class="text-center w-full">
-    <p class="font-semibold text-error text-lg">La conversion a échoué</p>
+<div id="conversion-status" class="card bg-base-100 shadow-lg border border-error/30">
+  <div class="card-body items-center text-center py-10">
+    <div class="w-20 h-20 rounded-full bg-error/10 flex items-center justify-center mb-4">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+      </svg>
+    </div>
+    <h3 class="text-xl font-bold text-error">Conversion échouée</h3>
+    <p class="text-sm text-base-content/50 mt-1 mb-4">Une erreur est survenue pendant la conversion</p>
     {% if job.error_message %}
-    <div class="alert alert-error mt-4 text-left text-sm">
-      <pre class="whitespace-pre-wrap font-mono text-xs">{{ job.error_message }}</pre>
+    <div class="collapse collapse-arrow bg-error/5 border border-error/20 w-full text-left mb-4">
+      <input type="checkbox" />
+      <div class="collapse-title text-sm font-medium text-error">Voir le message d'erreur</div>
+      <div class="collapse-content">
+        <pre class="text-xs font-mono text-base-content/70 whitespace-pre-wrap overflow-auto max-h-40">{{ job.error_message }}</pre>
+      </div>
     </div>
     {% endif %}
+    <a href="{% url 'conversions:upload' %}" class="btn btn-outline btn-error gap-2">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+      </svg>
+      Réessayer avec un autre fichier
+    </a>
+    <div class="badge badge-error badge-outline mt-3">failed</div>
   </div>
-  <a href="{% url 'conversions:upload' %}" class="btn btn-outline mt-2">
-    Réessayer avec un autre fichier
-  </a>
 </div>
 {% endif %}
