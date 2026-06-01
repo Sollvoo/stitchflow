@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 100 100">
+  <title>Étoile 5 branches — test chemins complexes</title>
+  <!-- Étoile 5 pointes : test des chemins fermés avec pointes -->
+  <polygon
+    points="50,5 61,35 95,35 68,57 79,91 50,70 21,91 32,57 5,35 39,35"
+    fill="#e53935"
+    stroke="#b71c1c"
+    stroke-width="1.5"
+    fill-rule="evenodd"/>
+</svg>

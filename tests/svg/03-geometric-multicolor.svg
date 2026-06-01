@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="120mm" height="80mm" viewBox="0 0 120 80">
+  <title>Géométrique multicouleur — test plusieurs fils</title>
+  <!-- Test : plusieurs couleurs = plusieurs fils de broderie -->
+  <rect x="5" y="5" width="50" height="35" fill="#1565c0" rx="4"/>
+  <rect x="65" y="5" width="50" height="35" fill="#2e7d32" rx="4"/>
+  <rect x="5" y="45" width="50" height="30" fill="#f57f17" rx="4"/>
+  <rect x="65" y="45" width="50" height="30" fill="#6a1b9a" rx="4"/>
+  <circle cx="60" cy="40" r="12" fill="#c62828"/>
+</svg>

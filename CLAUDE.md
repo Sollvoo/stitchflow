@@ -38,10 +38,11 @@ Ne jamais utiliser le Python système ou créer un nouveau venv pour ce projet. 
 
 ```bash
 source .venv/bin/activate
-python src/manage.py runserver
+python src/manage.py runserver 8001
 ```
 
-Accessible sur : http://localhost:8000
+Accessible sur : http://localhost:8001
+(Port 8001 utilisé car 8000 est réservé à FlowDo)
 
 ### Vite (assets frontend) — depuis src/frontend/
 

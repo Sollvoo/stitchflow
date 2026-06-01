@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 100 100">
+  <title>Fleur avec chemins — test path complexe</title>
+  <!-- Pétales via chemins bezier : test de la qualité de conversion -->
+  <g transform="translate(50,50)">
+    <ellipse cx="0" cy="-22" rx="10" ry="18" fill="#e91e63" transform="rotate(0)"/>
+    <ellipse cx="0" cy="-22" rx="10" ry="18" fill="#e91e63" transform="rotate(60)"/>
+    <ellipse cx="0" cy="-22" rx="10" ry="18" fill="#e91e63" transform="rotate(120)"/>
+    <ellipse cx="0" cy="-22" rx="10" ry="18" fill="#e91e63" transform="rotate(180)"/>
+    <ellipse cx="0" cy="-22" rx="10" ry="18" fill="#e91e63" transform="rotate(240)"/>
+    <ellipse cx="0" cy="-22" rx="10" ry="18" fill="#e91e63" transform="rotate(300)"/>
+    <circle cx="0" cy="0" r="14" fill="#ffc107"/>
+    <circle cx="0" cy="0" r="6" fill="#ff8f00"/>
+  </g>
+</svg>
