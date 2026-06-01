@@ -26,7 +26,9 @@ media/
 
 # Vite / Node
 node_modules/
-frontend/static/dist/
+src/frontend/node_modules/
+src/frontend/static/dist/
+src/frontend/package-lock.json
 
 # IDE
 .idea/

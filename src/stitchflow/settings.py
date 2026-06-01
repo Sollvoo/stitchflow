@@ -18,7 +18,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django_vite',
-    'frontend',
+    'core',
     'conversions',
 ]
 
@@ -37,7 +37,7 @@ ROOT_URLCONF = 'stitchflow.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / 'frontend' / 'templates'],
+        'DIRS': [],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -53,7 +53,8 @@ TEMPLATES = [
 WSGI_APPLICATION = 'stitchflow.wsgi.application'
 
 # Database — SQLite for MVP, switch to PostgreSQL via DATABASE_URL in .env
-DATABASE_URL = config('DATABASE_URL', default=f'sqlite:///{BASE_DIR}/db.sqlite3')
+# BASE_DIR.parent = project root, keeps db.sqlite3 outside src/
+DATABASE_URL = config('DATABASE_URL', default=f'sqlite:///{BASE_DIR.parent}/db.sqlite3')
 DATABASES = {
     'default': dj_database_url.parse(DATABASE_URL)
 }
@@ -74,20 +75,20 @@ USE_TZ = True
 
 # Static files
 STATIC_URL = '/static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATIC_ROOT = BASE_DIR.parent / 'staticfiles'
 STATICFILES_DIRS = [
     BASE_DIR / 'frontend' / 'static',
 ]
 
-# Media files (uploads and conversion outputs)
+# Media files (uploads and conversion outputs) — kept at project root
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_ROOT = BASE_DIR.parent / 'media'
 
 # File upload limits (10 MB max)
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
 
-# Vite integration
+# Vite integration — manifest at src/frontend/static/dist/.vite/manifest.json
 DJANGO_VITE = {
     'default': {
         'dev_mode': DEBUG,

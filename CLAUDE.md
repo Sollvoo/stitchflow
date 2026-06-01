@@ -38,14 +38,15 @@ Ne jamais utiliser le Python système ou créer un nouveau venv pour ce projet. 
 
 ```bash
 source .venv/bin/activate
-python manage.py runserver
+python src/manage.py runserver
 ```
 
 Accessible sur : http://localhost:8000
 
-### Vite (assets frontend)
+### Vite (assets frontend) — depuis src/frontend/
 
 ```bash
+cd src/frontend
 npm run dev
 ```
 
@@ -53,6 +54,7 @@ Accessible sur : http://localhost:5173 (assets servis en dev)
 
 Pour la production :
 ```bash
+cd src/frontend
 npm run build
 ```
 
@@ -60,7 +62,13 @@ npm run build
 
 ```bash
 source .venv/bin/activate
-celery -A stitchflow worker -l info
+cd src && celery -A stitchflow worker -l info
+```
+
+Ou depuis la racine avec PYTHONPATH :
+```bash
+source .venv/bin/activate
+PYTHONPATH=src celery -A stitchflow worker -l info
 ```
 
 ### Redis
@@ -83,15 +91,15 @@ Attention : Si vous avez déjà Redis dans un autre projet (ex : `~/Documents/Fl
 
 ```bash
 source .venv/bin/activate
-python manage.py makemigrations
-python manage.py migrate
+python src/manage.py makemigrations
+python src/manage.py migrate
 ```
 
 ### Superuser admin
 
 ```bash
 source .venv/bin/activate
-python manage.py createsuperuser
+python src/manage.py createsuperuser
 ```
 
 ---
@@ -109,11 +117,7 @@ Documentation officielle : https://inkstitch.org/docs/command-line
 
 ### Étapes d'installation sur macOS
 
-1. **Installer Inkscape** (prérequis) :
-   ```bash
-   brew install --cask inkscape
-   ```
-   Ou télécharger depuis https://inkscape.org/release/
+1. **Inkscape** est déjà installé via `brew install --cask inkscape` ✅
 
 2. **Installer Ink/Stitch** :
    - Télécharger la dernière release depuis https://inkstitch.org (v3.2.2 en juin 2025)
@@ -130,9 +134,7 @@ Documentation officielle : https://inkstitch.org/docs/command-line
 
 4. **Tester** :
    ```bash
-   inkstitch --help
-   # ou
-   /chemin/vers/inkstitch --help
+   ~/.config/inkscape/extensions/inkstitch/inkstitch --help
    ```
 
 ### Si Ink/Stitch n'est pas installé
@@ -144,45 +146,58 @@ La conversion échouera avec `FileNotFoundError`. Le job passera en statut `fail
 ## Architecture du projet
 
 ```
-stitchflow/
-├── manage.py
-├── pyproject.toml           ← dépendances Python
-├── package.json             ← dépendances npm
-├── vite.config.js           ← config Vite
-├── .env.example             ← variables d'environnement à copier
-├── CLAUDE.md                ← ce fichier
-├── ROADMAP.md               ← feuille de route
-├── stitchflow/              ← config Django
-│   ├── settings.py
-│   ├── urls.py
-│   ├── celery.py
-│   └── __init__.py          ← auto-discover Celery
-├── frontend/                ← app Django pour les assets
-│   ├── views.py             ← HomeView
-│   ├── urls.py
-│   ├── assets/              ← sources JS/CSS (input Vite)
-│   │   ├── main.js          ← entrypoint Vite
-│   │   └── styles.css       ← TailwindCSS + DaisyUI
-│   ├── static/dist/         ← build Vite (généré, ignoré git)
-│   └── templates/
-│       ├── base.html        ← layout principal
-│       └── home.html        ← page d'accueil
-└── conversions/             ← app Django pour les conversions
-    ├── models.py            ← ConversionJob
-    ├── views.py             ← UploadView, DetailView, StatusView, DownloadView
-    ├── urls.py
-    ├── forms.py             ← SVGUploadForm avec validation
-    ├── tasks.py             ← tâche Celery process_conversion_job
-    ├── services/
-    │   ├── inkstitch.py     ← convert_svg_to_pes() — intégration CLI
-    │   ├── validation.py    ← validate_svg_structure()
-    │   └── previews.py      ← stub Phase 2
-    └── templates/
-        └── conversions/
-            ├── upload.html
-            ├── detail.html
-            └── partials/
-                └── conversion_status.html  ← fragment HTMX
+StitchFlow/
+├── src/                         ← tout le code source
+│   ├── manage.py                ← commande Django (python src/manage.py ...)
+│   ├── stitchflow/              ← config Django
+│   │   ├── settings.py
+│   │   ├── urls.py
+│   │   ├── celery.py
+│   │   └── __init__.py
+│   ├── core/                    ← app Django HomeView + templates base
+│   │   ├── views.py             ← HomeView
+│   │   ├── urls.py
+│   │   └── templates/
+│   │       ├── base.html        ← layout principal (django_vite)
+│   │       └── home.html
+│   ├── conversions/             ← app Django pipeline SVG→PES
+│   │   ├── models.py            ← ConversionJob
+│   │   ├── views.py
+│   │   ├── urls.py
+│   │   ├── forms.py             ← SVGUploadForm avec validation
+│   │   ├── tasks.py             ← tâche Celery
+│   │   ├── services/
+│   │   │   ├── inkstitch.py     ← convert_svg_to_pes()
+│   │   │   ├── validation.py
+│   │   │   └── previews.py
+│   │   └── templates/
+│   │       └── conversions/
+│   │           ├── upload.html
+│   │           ├── detail.html
+│   │           └── partials/
+│   │               └── conversion_status.html  ← fragment HTMX
+│   └── frontend/                ← projet Vite (npm, assets)
+│       ├── package.json
+│       ├── vite.config.js
+│       ├── node_modules/        ← ignoré git
+│       ├── assets/              ← sources JS/CSS (input Vite)
+│       │   ├── main.js
+│       │   └── styles.css
+│       └── static/dist/         ← build Vite (généré, ignoré git)
+├── .claude/                     ← règles et commandes Claude Code
+│   ├── rules/
+│   │   ├── 00-index.md
+│   │   └── detailed/
+│   └── commands/
+│       └── commit.md
+├── .env                         ← secrets locaux (ignoré git)
+├── .env.example
+├── .gitignore
+├── CLAUDE.md                    ← ce fichier
+├── ROADMAP.md
+├── pyproject.toml
+├── db.sqlite3                   ← base de données locale (ignorée git)
+└── media/                       ← fichiers uploadés (ignorés git)
 ```
 
 ---
@@ -215,14 +230,18 @@ stitchflow/
 - **Types** — typer les fonctions autant que possible
 - **Migrations** — toujours committer les migrations avec le code qui les génère
 
-## Points d'attention pour les futurs agents IA
+## Points d'attention pour les agents IA
 
-- Le venv est à `.venv/` — toujours l'activer avant toute commande Python
+- Le venv est à `.venv/` à la racine — **toujours l'activer** avant toute commande Python
+- `manage.py` est dans `src/` → commande : `python src/manage.py`
+- Celery : `cd src && celery -A stitchflow worker` ou `PYTHONPATH=src celery -A stitchflow worker`
+- Vite : `cd src/frontend && npm run dev` ou `npm run build`
 - `DATABASE_URL` dans `.env` pour switcher SQLite → PostgreSQL (`dj-database-url`)
 - `INKSTITCH_EXECUTABLE` doit pointer vers le vrai exécutable Ink/Stitch
 - TailwindCSS v4 : config CSS-first (`@import "tailwindcss"` dans styles.css), pas de `tailwind.config.js`
-- DaisyUI v5 : `@plugin "daisyui"` dans le CSS, pas dans une config JS
-- Vite root : `frontend/assets/`, outDir : `frontend/static/dist/`
-- Le manifest Vite est à `frontend/static/dist/.vite/manifest.json`
+- DaisyUI v5 : `@plugin "daisyui"` dans le CSS
+- Vite root : `src/frontend/assets/`, outDir : `src/frontend/static/dist/`
+- Le manifest Vite est à `src/frontend/static/dist/.vite/manifest.json`
 - HTMX polling : le partial `conversion_status.html` inclut son propre `hx-trigger` uniquement si le job n'est pas terminal
 - Pour ajouter PostgreSQL : `pip install psycopg[binary]` + `DATABASE_URL=postgresql://...` dans `.env`
+- `BASE_DIR` dans settings.py pointe vers `src/` ; `BASE_DIR.parent` = racine du projet

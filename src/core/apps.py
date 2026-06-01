@@ -1,7 +1,7 @@
 from django.apps import AppConfig
 
 
-class FrontendConfig(AppConfig):
+class CoreConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
-    name = 'frontend'
-    verbose_name = 'Frontend'
+    name = 'core'
+    verbose_name = 'Core'
