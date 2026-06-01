@@ -1,0 +1,23 @@
+{
+  "name": "stitchflow",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.4",
+    "vite": "^6.3.5"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.3.0",
+    "alpinejs": "^3.14.9",
+    "daisyui": "^5.0.35",
+    "htmx.org": "^2.0.4",
+    "tailwindcss": "^4.1.8"
+  }
+}

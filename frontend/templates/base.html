@@ -1,0 +1,50 @@
+{% load django_vite %}
+<!DOCTYPE html>
+<html lang="fr" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}StitchFlow{% endblock %} — SVG vers broderie PES</title>
+  {% vite_asset 'main.js' %}
+</head>
+<body class="min-h-screen bg-base-200">
+
+  <!-- Navbar -->
+  <nav class="navbar bg-base-100 shadow-sm border-b border-base-300">
+    <div class="container mx-auto px-4">
+      <div class="flex-1">
+        <a href="/" class="btn btn-ghost text-xl font-bold text-primary">
+          🧵 StitchFlow
+        </a>
+      </div>
+      <div class="flex-none gap-2">
+        <a href="/conversions/" class="btn btn-primary btn-sm">
+          Nouvelle conversion
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Messages Django -->
+  {% if messages %}
+  <div class="container mx-auto px-4 mt-4">
+    {% for message in messages %}
+    <div role="alert" class="alert {% if message.tags == 'error' %}alert-error{% elif message.tags == 'success' %}alert-success{% elif message.tags == 'warning' %}alert-warning{% else %}alert-info{% endif %} mb-2">
+      <span>{{ message }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Contenu principal -->
+  <main class="container mx-auto px-4 py-8">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer footer-center p-4 bg-base-100 text-base-content border-t border-base-300 mt-8">
+    <p class="text-sm text-base-content/60">StitchFlow — Conversion SVG vers broderie PES</p>
+  </footer>
+
+</body>
+</html>

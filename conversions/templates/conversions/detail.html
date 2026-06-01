@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Conversion {{ job.id|truncatechars:8 }}{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+
+  <!-- Breadcrumb -->
+  <div class="breadcrumbs text-sm mb-6">
+    <ul>
+      <li><a href="/">Accueil</a></li>
+      <li><a href="{% url 'conversions:upload' %}">Conversions</a></li>
+      <li>Job {{ job.id|truncatechars:12 }}</li>
+    </ul>
+  </div>
+
+  <div class="card bg-base-100 shadow-lg">
+    <div class="card-body">
+
+      <h2 class="card-title text-xl mb-4">Détail de la conversion</h2>
+
+      <!-- Infos du job -->
+      <div class="overflow-x-auto mb-6">
+        <table class="table table-sm">
+          <tbody>
+            <tr>
+              <th class="w-1/3">Identifiant</th>
+              <td class="font-mono text-xs">{{ job.id }}</td>
+            </tr>
+            <tr>
+              <th>Format source</th>
+              <td class="uppercase font-semibold">{{ job.source_format }}</td>
+            </tr>
+            <tr>
+              <th>Créé le</th>
+              <td>{{ job.created_at|date:"d/m/Y à H:i:s" }}</td>
+            </tr>
+            <tr>
+              <th>Mis à jour</th>
+              <td>{{ job.updated_at|date:"d/m/Y à H:i:s" }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Zone de statut HTMX -->
+      <div class="divider">Statut</div>
+      {% include "conversions/partials/conversion_status.html" %}
+
+    </div>
+  </div>
+
+  <div class="mt-4 text-center">
+    <a href="{% url 'conversions:upload' %}" class="btn btn-ghost btn-sm">
+      ← Nouvelle conversion
+    </a>
+  </div>
+
+</div>
+{% endblock %}

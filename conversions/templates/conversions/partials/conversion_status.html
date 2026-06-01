@@ -1,0 +1,50 @@
+{% if job.status == 'pending' or job.status == 'processing' %}
+<div
+  id="conversion-status"
+  hx-get="{% url 'conversions:status' job.id %}"
+  hx-trigger="every 2s"
+  hx-swap="outerHTML"
+  class="flex flex-col items-center gap-4 py-6"
+>
+  <span class="loading loading-spinner loading-lg text-primary"></span>
+  <div class="text-center">
+    {% if job.status == 'pending' %}
+    <p class="font-semibold text-base-content">En attente de traitement…</p>
+    <p class="text-sm text-base-content/50 mt-1">Votre fichier est en file d'attente.</p>
+    {% else %}
+    <p class="font-semibold text-base-content">Conversion en cours…</p>
+    <p class="text-sm text-base-content/50 mt-1">Ink/Stitch génère votre fichier PES.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% elif job.status == 'completed' %}
+<div id="conversion-status" class="flex flex-col items-center gap-4 py-6">
+  <div class="text-6xl">✅</div>
+  <div class="text-center">
+    <p class="font-semibold text-success text-lg">Conversion terminée !</p>
+    <p class="text-sm text-base-content/50 mt-1">Votre fichier PES est prêt.</p>
+  </div>
+  {% if job.output_file %}
+  <a href="{% url 'conversions:download' job.id %}" class="btn btn-success btn-lg mt-2">
+    ⬇️ Télécharger le fichier PES
+  </a>
+  {% endif %}
+</div>
+
+{% elif job.status == 'failed' %}
+<div id="conversion-status" class="flex flex-col items-center gap-4 py-6">
+  <div class="text-6xl">❌</div>
+  <div class="text-center w-full">
+    <p class="font-semibold text-error text-lg">La conversion a échoué</p>
+    {% if job.error_message %}
+    <div class="alert alert-error mt-4 text-left text-sm">
+      <pre class="whitespace-pre-wrap font-mono text-xs">{{ job.error_message }}</pre>
+    </div>
+    {% endif %}
+  </div>
+  <a href="{% url 'conversions:upload' %}" class="btn btn-outline mt-2">
+    Réessayer avec un autre fichier
+  </a>
+</div>
+{% endif %}

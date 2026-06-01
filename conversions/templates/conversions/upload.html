@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Nouvelle conversion{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto">
+  <div class="card bg-base-100 shadow-lg">
+    <div class="card-body">
+      <h2 class="card-title text-2xl mb-1">Uploader un fichier SVG</h2>
+      <p class="text-base-content/60 text-sm mb-6">
+        Formats acceptés : <strong>.svg</strong> — Taille maximale : 10 Mo
+      </p>
+
+      <form method="post" enctype="multipart/form-data" x-data="{ fileName: '' }">
+        {% csrf_token %}
+
+        <!-- Erreurs globales -->
+        {% if form.non_field_errors %}
+        <div role="alert" class="alert alert-error mb-4">
+          {% for error in form.non_field_errors %}
+          <span>{{ error }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Champ fichier -->
+        <div class="form-control w-full mb-4">
+          <label class="label">
+            <span class="label-text font-medium">Fichier SVG</span>
+          </label>
+          <input
+            type="file"
+            name="{{ form.original_file.html_name }}"
+            accept=".svg,image/svg+xml"
+            class="file-input file-input-bordered w-full {% if form.original_file.errors %}file-input-error{% endif %}"
+            @change="fileName = $event.target.files[0]?.name || ''"
+            required
+          />
+          {% if form.original_file.errors %}
+          <label class="label">
+            <span class="label-text-alt text-error">
+              {% for error in form.original_file.errors %}{{ error }}{% endfor %}
+            </span>
+          </label>
+          {% endif %}
+          <template x-if="fileName">
+            <p class="mt-2 text-sm text-base-content/60">Fichier sélectionné : <span x-text="fileName" class="font-mono"></span></p>
+          </template>
+        </div>
+
+        <div class="card-actions justify-end mt-2">
+          <button type="submit" class="btn btn-primary w-full">
+            Lancer la conversion
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
