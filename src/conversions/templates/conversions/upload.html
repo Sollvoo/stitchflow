@@ -15,7 +15,7 @@
   <div class="card bg-base-100 shadow-lg border border-base-200">
     <div class="card-body gap-6">
 
-      <form method="post" enctype="multipart/form-data" x-data="{ fileName: '', dragging: false }">
+      <form method="post" enctype="multipart/form-data" x-data="{ fileName: '', dragging: false, svgPreviewUrl: '', readSvgPreview(file) { if (!file) return; const r = new FileReader(); r.onload = (e) => { this.svgPreviewUrl = e.target.result }; r.readAsDataURL(file); } }">
         {% csrf_token %}
 
         <!-- Erreurs globales -->
@@ -34,7 +34,7 @@
           :class="dragging ? 'border-primary bg-primary/5' : 'border-base-300 hover:border-primary/50 hover:bg-base-50'"
           @dragover.prevent="dragging = true"
           @dragleave.prevent="dragging = false"
-          @drop.prevent="dragging = false; fileName = $event.dataTransfer.files[0]?.name || ''; $refs.fileInput.files = $event.dataTransfer.files"
+          @drop.prevent="dragging = false; const f = $event.dataTransfer.files[0]; fileName = f?.name || ''; $refs.fileInput.files = $event.dataTransfer.files; readSvgPreview(f)"
           @click="$refs.fileInput.click()"
         >
           <div x-show="!fileName">
@@ -58,9 +58,15 @@
             name="{{ form.original_file.html_name }}"
             accept=".svg,image/svg+xml"
             class="hidden"
-            @change="fileName = $event.target.files[0]?.name || ''"
+            @change="const f = $event.target.files[0]; fileName = f?.name || ''; readSvgPreview(f)"
             required
           />
+        </div>
+
+        <!-- Aperçu SVG client-side -->
+        <div x-show="svgPreviewUrl" x-cloak class="border border-base-200 rounded-xl overflow-hidden bg-base-200/50">
+          <p class="text-xs text-base-content/50 px-3 pt-2 pb-1">Aperçu du fichier</p>
+          <img :src="svgPreviewUrl" class="w-full max-h-48 object-contain p-2" alt="Aperçu SVG">
         </div>
 
         <!-- Erreur fichier -->
@@ -71,6 +77,26 @@
           {% endfor %}
         </div>
         {% endif %}
+
+        <!-- Taille de broderie (optionnel) -->
+        <div class="form-control">
+          <label class="label pb-1">
+            <span class="label-text font-medium">Largeur souhaitée <span class="text-base-content/40 font-normal">(optionnel)</span></span>
+            <span class="label-text-alt text-base-content/40">20 – 360 mm</span>
+          </label>
+          <div class="flex items-center gap-2">
+            {{ form.target_width_mm }}
+            <span class="text-sm text-base-content/50 shrink-0">mm</span>
+          </div>
+          <label class="label pt-1">
+            <span class="label-text-alt text-base-content/40">Laisser vide pour conserver la taille du SVG original. Le ratio est préservé.</span>
+          </label>
+          {% if form.target_width_mm.errors %}
+          <div class="text-error text-sm mt-1">
+            {% for error in form.target_width_mm.errors %}<span>{{ error }}</span>{% endfor %}
+          </div>
+          {% endif %}
+        </div>
 
         <!-- Submit -->
         <button type="submit" class="btn btn-primary w-full gap-2" :disabled="!fileName">

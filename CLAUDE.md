@@ -105,6 +105,21 @@ python src/manage.py createsuperuser
 
 ---
 
+## Installation de potrace
+
+Requis pour la vectorisation PNG → SVG avec fidélité couleurs (Phase 4a) :
+
+```bash
+brew install potrace
+```
+
+Vérification : `potrace --version` doit afficher `potrace 1.16` ou supérieur.
+
+Le pipeline utilise potrace comme étape intermédiaire (VTracer → **potrace** → Inkscape fallback).
+Chaque couleur détectée par MEDIANCUT est tracée séparément → les paths SVG portent la vraie couleur.
+
+---
+
 ## Installation d'Ink/Stitch
 
 ### Présentation
@@ -230,6 +245,16 @@ StitchFlow/
 - **Statuts job** — utiliser `ConversionJob.Status.*`, jamais les strings directement
 - **Types** — typer les fonctions autant que possible
 - **Migrations** — toujours committer les migrations avec le code qui les génère
+
+## Règle de mise à jour de la Roadmap
+
+**Obligatoire à chaque fin de session de développement :**
+- Cocher `[x]` dans `ROADMAP.md` tous les éléments terminés dans la session
+- Ajouter les nouvelles fonctionnalités décidées (même non implémentées)
+- Ne jamais laisser la roadmap en décalage avec l'état réel du code
+- Si une Phase est entièrement cochée, ajouter ✅ à son titre
+
+---
 
 ## Points d'attention pour les agents IA
 

@@ -25,6 +25,28 @@ class InkstitchError(Exception):
     pass
 
 
+def humanize_inkstitch_error(raw_error: str) -> str:
+    """Traduit les messages d'erreur bruts d'Ink/Stitch en messages lisibles en français."""
+    lowered = raw_error.lower()
+
+    if 'no stitchable' in lowered or 'stitchable elements' in lowered:
+        return (
+            'Le SVG ne contient pas d\'éléments brodables. '
+            'Assurez-vous que vos formes ont un contour ou un remplissage.'
+        )
+
+    if 'filenotfounderror' in lowered or 'introuvable' in lowered or 'not found' in lowered:
+        return 'Le service de conversion est temporairement indisponible. Réessayez dans quelques instants.'
+
+    if 'timeoutexpired' in lowered or 'délai' in lowered or 'trop de temps' in lowered or 'timed out' in lowered:
+        return (
+            'La conversion a pris trop de temps (design trop complexe ?). '
+            'Essayez de simplifier votre SVG.'
+        )
+
+    return raw_error
+
+
 def convert_svg_to_pes(input_svg_path: Path, output_dir: Path) -> Path:
     """
     Convertit un fichier SVG en fichier PES via Ink/Stitch CLI.

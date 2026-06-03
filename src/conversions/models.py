@@ -23,6 +23,14 @@ class ConversionJob(models.Model):
     preview_file = models.FileField(
         upload_to='conversions/previews/', blank=True, null=True
     )
+    original_filename = models.CharField(max_length=255, blank=True)
+    target_width_mm = models.PositiveIntegerField(null=True, blank=True)
+    conversion_metadata = models.JSONField(default=dict, blank=True)
+    vectorized_svg_file = models.FileField(
+        upload_to='conversions/vectorized/', blank=True, null=True
+    )
+    n_colors = models.PositiveSmallIntegerField(null=True, blank=True)
+    remove_background = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -36,8 +44,3 @@ class ConversionJob(models.Model):
     def is_terminal(self) -> bool:
         return self.status in (self.Status.COMPLETED, self.Status.FAILED)
 
-    @property
-    def original_filename(self) -> str:
-        if self.original_file:
-            return self.original_file.name.split('/')[-1]
-        return ''

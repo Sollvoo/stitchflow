@@ -25,22 +25,95 @@
 
 {% elif job.status == 'completed' %}
 <div id="conversion-status" class="card bg-base-100 shadow-lg border border-success/30">
-  <div class="card-body items-center text-center py-12">
+  <div class="card-body items-center text-center py-10">
+
     <div class="w-20 h-20 rounded-full bg-success/10 flex items-center justify-center mb-4">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
       </svg>
     </div>
+
     <h3 class="text-xl font-bold text-success">Conversion réussie !</h3>
     <p class="text-sm text-base-content/50 mt-1 mb-6">Votre fichier PES est prêt à être utilisé</p>
+
     {% if job.output_file %}
     <a href="{% url 'conversions:download' job.id %}" class="btn btn-success btn-lg gap-2 shadow">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
       </svg>
-      Télécharger le fichier .PES
+      Télécharger
+      {% if job.original_filename %}<span class="font-mono text-sm opacity-80">{{ job.original_filename }}.pes</span>{% else %}le fichier .PES{% endif %}
     </a>
     {% endif %}
+
+    <!-- Aperçu comparatif PNG source / SVG vectorisé (jobs PNG uniquement) -->
+    {% if job.source_format == 'png' and job.vectorized_svg_file %}
+    <div class="mt-6 w-full">
+      <p class="text-xs text-base-content/50 mb-2 text-left font-medium uppercase tracking-wide">Aperçu comparatif</p>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <p class="text-xs text-center text-base-content/40 mb-1">PNG source</p>
+          <img src="{{ job.original_file.url }}" class="rounded-xl border border-base-200 w-full max-h-48 object-contain bg-white" alt="PNG source">
+        </div>
+        <div>
+          <p class="text-xs text-center text-base-content/40 mb-1">SVG vectorisé</p>
+          <img src="{{ job.vectorized_svg_file.url }}" class="rounded-xl border border-base-200 w-full max-h-48 object-contain bg-white" alt="SVG vectorisé">
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Aperçu PNG du motif brodé -->
+    {% if job.preview_file %}
+    <div class="mt-6 w-full">
+      <p class="text-xs text-base-content/50 mb-2 text-left font-medium uppercase tracking-wide">Aperçu du motif brodé</p>
+      <img src="{{ job.preview_file.url }}" class="rounded-xl border border-base-200 w-full max-h-64 object-contain bg-white shadow-sm" alt="Aperçu du motif brodé">
+    </div>
+    {% else %}
+    <p class="text-xs text-base-content/30 mt-4">Aperçu non disponible</p>
+    {% endif %}
+
+    <!-- Couleurs des fils -->
+    {% if job.conversion_metadata.thread_colors %}
+    <div class="mt-6 w-full text-left">
+      <p class="text-xs text-base-content/50 mb-2 font-medium uppercase tracking-wide">
+        Fils nécessaires — {{ job.conversion_metadata.color_changes }} couleur{{ job.conversion_metadata.color_changes|pluralize }}
+      </p>
+      <div class="flex flex-wrap gap-2">
+        {% for thread in job.conversion_metadata.thread_colors %}
+        <div class="flex items-center gap-1.5 bg-base-200 rounded-full px-3 py-1" title="{{ thread.hex }}">
+          <span class="w-3.5 h-3.5 rounded-full border border-base-300 shrink-0" style="background-color: {{ thread.hex }};"></span>
+          <span class="text-xs text-base-content/70">{{ thread.name|default:thread.hex }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Stats : dimensions, points, temps -->
+    {% if job.conversion_metadata %}
+    <div class="stats stats-horizontal bg-base-200/50 border border-base-200 shadow-none rounded-xl mt-4 w-full text-sm">
+      {% if job.conversion_metadata.width_mm %}
+      <div class="stat py-3 px-4">
+        <div class="stat-title text-xs">Dimensions</div>
+        <div class="stat-value text-base text-base-content">{{ job.conversion_metadata.width_mm }} × {{ job.conversion_metadata.height_mm }} mm</div>
+      </div>
+      {% endif %}
+      {% if job.conversion_metadata.stitch_count %}
+      <div class="stat py-3 px-4">
+        <div class="stat-title text-xs">Points</div>
+        <div class="stat-value text-base text-base-content">{{ job.conversion_metadata.stitch_count|floatformat:"0" }}</div>
+      </div>
+      {% endif %}
+      {% if job.conversion_metadata.time_minutes %}
+      <div class="stat py-3 px-4">
+        <div class="stat-title text-xs">Temps estimé</div>
+        <div class="stat-value text-base text-base-content">~{{ job.conversion_metadata.time_minutes }} min</div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
     <div class="badge badge-success badge-outline mt-4">completed</div>
   </div>
 </div>
