@@ -58,6 +58,47 @@ def validate_png(path: Path) -> None:
         )
 
 
+def convert_pdf_to_png(path: Path, dpi: int = 300) -> Path:
+    """
+    Rasterise la première page d'un PDF en PNG 300dpi via pdf2image + poppler.
+    Retourne le chemin d'un fichier PNG temporaire (à supprimer par l'appelant).
+    Lève PNGValidationError si pdf2image est absent ou si le PDF est illisible.
+    """
+    try:
+        from pdf2image import convert_from_path
+    except ImportError as exc:
+        raise PNGValidationError(
+            'Le service de conversion PDF est indisponible. '
+            'Installez poppler (brew install poppler) et pdf2image (pip install pdf2image).'
+        ) from exc
+
+    try:
+        pages = convert_from_path(str(path), dpi=dpi, first_page=1, last_page=1)
+    except Exception as exc:
+        raise PNGValidationError(f'Impossible de lire le PDF : {exc}') from exc
+
+    if not pages:
+        raise PNGValidationError('Le PDF ne contient aucune page lisible.')
+
+    tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+    pages[0].save(tmp.name, 'PNG')
+    tmp.close()
+    return Path(tmp.name)
+
+
+def convert_to_png(path: Path) -> Path:
+    """
+    Convertit un fichier JPEG ou WebP en PNG temporaire via Pillow.
+    Retourne le chemin d'un fichier PNG temporaire (à supprimer par l'appelant).
+    """
+    with Image.open(path) as img:
+        rgb = img.convert('RGB')
+        tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+        rgb.save(tmp.name, 'PNG')
+        tmp.close()
+    return Path(tmp.name)
+
+
 def remove_background(path: Path) -> Path:
     """
     Supprime le fond de l'image via rembg (IA) si disponible,
@@ -99,14 +140,31 @@ def _remove_background_pillow(path: Path) -> Path:
 def preprocess_image(path: Path) -> Path:
     """
     Prépare l'image pour la vectorisation : améliore le contraste et la netteté.
+    Adaptatif : logos (peu de couleurs) → traitement léger ; photos → traitement complet.
     Ne quantifie PAS les couleurs ici — c'est le rôle de _vectorize_potrace.
     Retourne le chemin d'un fichier temporaire PNG à supprimer par l'appelant.
     """
     with Image.open(path) as img:
-        working = img.convert('RGB')
+        # Aplatir le canal alpha sur fond blanc avant convert('RGB') :
+        # sans ça, les pixels transparents deviennent noirs (bug fond noir SVG).
+        if img.mode in ('RGBA', 'LA', 'P'):
+            bg = Image.new('RGB', img.size, (255, 255, 255))
+            rgba = img.convert('RGBA')
+            bg.paste(rgba.convert('RGB'), mask=rgba.split()[3])
+            working = bg
+        else:
+            working = img.convert('RGB')
 
-        working = ImageEnhance.Contrast(working).enhance(1.3)
-        working = ImageEnhance.Sharpness(working).enhance(1.5)
+        # Détecter logo (≤200 couleurs exactes) vs photo
+        is_logo = working.getcolors(maxcolors=200) is not None
+        if is_logo:
+            # Logos : bords déjà nets, contraste léger uniquement
+            working = ImageEnhance.Contrast(working).enhance(1.1)
+        else:
+            # Photos / images complexes : contraste + netteté
+            working = ImageEnhance.Contrast(working).enhance(1.3)
+            working = ImageEnhance.Sharpness(working).enhance(1.5)
+
         working = working.filter(ImageFilter.SMOOTH)
 
         tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
@@ -134,11 +192,128 @@ def _flatten_alpha(path: Path) -> Path:
     return Path(tmp.name)
 
 
+def _find_vtracer_binary() -> str | None:
+    """Retourne le chemin du binaire vtracer CLI (vendor/ prioritaire, puis PATH)."""
+    if _VTRACER_VENDOR.exists():
+        return str(_VTRACER_VENDOR)
+    return shutil.which('vtracer')
+
+
+def _consolidate_svg_colors(svg_path: Path, n_colors: int) -> None:
+    """
+    Fusionne les couleurs similaires du SVG VTracer en max n_colors clusters.
+    VTracer crée de nombreuses nuances dues à l'anti-aliasing ; pour la broderie
+    on veut des aplats francs avec peu de couleurs distinctes.
+    """
+    import math
+    import xml.etree.ElementTree as ET
+
+    ET.register_namespace('', 'http://www.w3.org/2000/svg')
+    try:
+        tree = ET.parse(svg_path)
+    except ET.ParseError:
+        return
+
+    root = tree.getroot()
+    fill_counts: dict[str, int] = {}
+    for el in root.iter():
+        fill = el.get('fill', '')
+        if fill.startswith('#') and len(fill) == 7:
+            fill_counts[fill] = fill_counts.get(fill, 0) + 1
+
+    if not fill_counts:
+        return
+
+    def hex_to_rgb(h: str) -> tuple[int, int, int]:
+        return (int(h[1:3], 16), int(h[3:5], 16), int(h[5:7], 16))
+
+    def rgb_to_hex(r: int, g: int, b: int) -> str:
+        return f'#{r:02x}{g:02x}{b:02x}'
+
+    colors_by_count = sorted(fill_counts.items(), key=lambda x: -x[1])
+    clusters: list[tuple[tuple[int, int, int], list[str]]] = []
+
+    for hex_color, _ in colors_by_count:
+        rgb = hex_to_rgb(hex_color)
+        assigned = False
+        for center_rgb, members in clusters:
+            d = math.sqrt(sum((a - b) ** 2 for a, b in zip(rgb, center_rgb)))
+            if d < 50:
+                members.append(hex_color)
+                assigned = True
+                break
+        if not assigned:
+            clusters.append((rgb, [hex_color]))
+
+    clusters.sort(key=lambda c: -sum(fill_counts.get(h, 0) for h in c[1]))
+    kept = clusters[:n_colors]
+
+    replacement: dict[str, str] = {}
+    for center_rgb, members in kept:
+        center_hex = rgb_to_hex(*center_rgb)
+        for old_hex in members:
+            replacement[old_hex] = center_hex
+
+    for hex_color in fill_counts:
+        if hex_color not in replacement:
+            best = min(kept, key=lambda c: math.sqrt(sum((a - b) ** 2 for a, b in zip(hex_to_rgb(hex_color), c[0]))))
+            replacement[hex_color] = rgb_to_hex(*best[0])
+
+    changed = False
+    for el in root.iter():
+        fill = el.get('fill', '')
+        if fill in replacement and replacement[fill] != fill:
+            el.set('fill', replacement[fill])
+            changed = True
+
+    if changed:
+        tree.write(svg_path, encoding='unicode', xml_declaration=True)
+        unique_after = len({v for v in replacement.values()})
+        logger.info('[vtracer] %d couleurs → %d clusters (max %d)', len(fill_counts), unique_after, n_colors)
+
+
+def _vectorize_vtracer_cli(
+    png_path: Path, svg_path: Path, n_colors: int, vtracer_bin: str
+) -> bool:
+    """
+    Vectorise PNG → SVG via le binaire CLI VTracer (ARM64-safe, sans SIGSEGV Python bindings).
+    Retourne True si réussi, False sinon (l'appelant basculera sur potrace).
+    """
+    gradient_step = max(16, 256 // max(n_colors, 1))
+    result = subprocess.run(
+        [
+            vtracer_bin,
+            '--input', str(png_path),
+            '--output', str(svg_path),
+            '--colormode', 'color',
+            '--hierarchical', 'stacked',
+            '--mode', 'spline',
+            '--filter_speckle', '4',
+            '--color_precision', '6',
+            '--gradient_step', str(gradient_step),
+            '--corner_threshold', '60',
+            '--segment_length', '4.0',
+            '--splice_threshold', '45',
+            '--path_precision', '3',
+        ],
+        capture_output=True,
+        timeout=60,
+    )
+    if result.returncode != 0 or not svg_path.exists() or svg_path.stat().st_size == 0:
+        logger.warning('[vtracer CLI] échoué (code %d): %s',
+                       result.returncode, result.stderr.decode(errors='replace')[:200])
+        return False
+
+    _consolidate_svg_colors(svg_path, n_colors)
+    _simplify_svg_nodes(svg_path)
+    logger.info('[vtracer CLI] vectorisation terminée : %s', png_path.name)
+    return True
+
+
 def vectorize_to_svg(png_path: Path, n_colors: int = 6) -> Path:
     """
     Vectorise un PNG en SVG.
-    Essaie d'abord VTracer (subprocess isolé pour éviter SIGSEGV ARM64),
-    puis Inkscape object-trace en fallback si VTracer échoue.
+    Pipeline : VTracer CLI binaire → VTracer Python (subprocess isolé) → potrace → Inkscape.
     Retourne le chemin d'un fichier SVG temporaire à supprimer par l'appelant.
     """
     flattened_path = _flatten_alpha(png_path)
@@ -149,23 +324,40 @@ def vectorize_to_svg(png_path: Path, n_colors: int = 6) -> Path:
     svg_path = Path(tmp_svg.name)
 
     try:
+        # 1. VTracer CLI binaire (ARM64-safe, meilleure qualité couleurs)
+        vtracer_bin = _find_vtracer_binary()
+        if vtracer_bin:
+            if _vectorize_vtracer_cli(flattened_path, svg_path, n_colors, vtracer_bin):
+                return svg_path
+
+        # 2. VTracer Python via subprocess isolé (évite SIGSEGV ARM64 dans le process principal)
+        _preexec = None
+        if sys.platform != 'win32':
+            import resource as _resource
+            def _preexec():
+                _resource.setrlimit(_resource.RLIMIT_CORE, (0, 0))
+
         result = subprocess.run(
             [sys.executable, str(_VTRACER_HELPER), str(flattened_path), str(svg_path), str(n_colors)],
             capture_output=True,
             timeout=120,
+            preexec_fn=_preexec,
         )
         if result.returncode == 0:
-            logger.info("Vectorisation VTracer terminée : %s", png_path.name)
+            logger.info("Vectorisation VTracer Python terminée : %s", png_path.name)
             return svg_path
 
-        # VTracer a échoué (SIGSEGV sur ARM64, etc.) — tentative potrace
         stderr = result.stderr.decode(errors='replace').strip()
-        logger.warning("VTracer échoué (code %d%s), tentative potrace.", result.returncode,
+        logger.warning("VTracer Python échoué (code %d%s), tentative potrace.", result.returncode,
                        f' : {stderr}' if stderr else '')
+
+        # 3. potrace multi-couleurs (fallback)
         try:
             return _vectorize_potrace(flattened_path, svg_path, n_colors)
         except RuntimeError as potrace_err:
             logger.warning('potrace échoué (%s), fallback Inkscape.', potrace_err)
+
+        # 4. Inkscape object-trace (dernier recours)
         return _vectorize_inkscape(flattened_path, svg_path, n_colors)
 
     except subprocess.TimeoutExpired:
@@ -373,6 +565,16 @@ def _cluster_exact_colors(
     return [(c[0], c[1]) for c in clusters[:n_colors]]
 
 
+_POTRACE_MIN_DIM = 600  # upscale si la plus petite dimension est sous ce seuil
+_VTRACER_VENDOR = Path(__file__).parents[3] / 'vendor' / 'vtracer'
+
+
+def _smooth_mask_to_1bit(mask: 'Image.Image') -> 'Image.Image':
+    """Applique un léger flou gaussien avant la conversion 1-bit pour lisser les bords pixels."""
+    blurred = mask.filter(ImageFilter.GaussianBlur(radius=0.5))
+    return blurred.point(lambda x: 0 if x < 128 else 255).convert('1')
+
+
 def _vectorize_potrace(png_path: Path, svg_path: Path, n_colors: int = 6) -> Path:
     """
     Vectorise PNG → SVG multi-couleurs via potrace.
@@ -389,6 +591,15 @@ def _vectorize_potrace(png_path: Path, svg_path: Path, n_colors: int = 6) -> Pat
     with Image.open(png_path) as img:
         rgb = img.convert('RGB')
         width, height = rgb.size
+
+    # Upscale si image trop petite (3× max) → plus de données pour potrace = meilleures courbes
+    if min(width, height) < _POTRACE_MIN_DIM:
+        scale = min(3.0, _POTRACE_MIN_DIM / min(width, height))
+        new_w = int(width * scale)
+        new_h = int(height * scale)
+        rgb = rgb.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        width, height = new_w, new_h
+        logger.info('[DEBUG potrace] upscale %.1f× → %dx%d', scale, width, height)
 
     total_pixels = width * height
     unique_colors = rgb.getcolors(maxcolors=total_pixels)
@@ -419,14 +630,19 @@ def _vectorize_potrace(png_path: Path, svg_path: Path, n_colors: int = 6) -> Pat
                 mask_data = [0 if p in color_set else 255 for p in pixel_data]
                 mask = Image.new('L', (width, height))
                 mask.putdata(mask_data)
-                mask_1bit = mask.convert('1')
+                mask_1bit = _smooth_mask_to_1bit(mask)
 
                 pbm_path = tmpdir_path / f'mask_{idx}.pbm'
                 potrace_svg = tmpdir_path / f'out_{idx}.svg'
                 _color_to_pbm(mask_1bit, pbm_path)
 
                 result = subprocess.run(
-                    [potrace_bin, '--svg', '--unit', '1', '--output', str(potrace_svg), str(pbm_path)],
+                    [potrace_bin, '--svg',
+                     '--unit', '1',
+                     '--alphamax', '0.1',
+                     '--turdsize', '2',
+                     '--opttolerance', '0.2',
+                     '--output', str(potrace_svg), str(pbm_path)],
                     capture_output=True,
                     timeout=30,
                 )
@@ -456,14 +672,20 @@ def _vectorize_potrace(png_path: Path, svg_path: Path, n_colors: int = 6) -> Pat
 
                 hex_color = f'#{r:02x}{g_val:02x}{b:02x}'
                 lut = [0 if i == color_idx else 255 for i in range(256)]
-                mask_1bit = quantized.point(lut, mode='L').convert('1')
+                mask_gray = quantized.point(lut, mode='L')
+                mask_1bit = _smooth_mask_to_1bit(mask_gray)
 
                 pbm_path = tmpdir_path / f'mask_{color_idx}.pbm'
                 potrace_svg = tmpdir_path / f'out_{color_idx}.svg'
                 _color_to_pbm(mask_1bit, pbm_path)
 
                 result = subprocess.run(
-                    [potrace_bin, '--svg', '--unit', '1', '--output', str(potrace_svg), str(pbm_path)],
+                    [potrace_bin, '--svg',
+                     '--unit', '1',
+                     '--alphamax', '0.1',
+                     '--turdsize', '2',
+                     '--opttolerance', '0.2',
+                     '--output', str(potrace_svg), str(pbm_path)],
                     capture_output=True,
                     timeout=30,
                 )
@@ -479,5 +701,40 @@ def _vectorize_potrace(png_path: Path, svg_path: Path, n_colors: int = 6) -> Pat
         raise RuntimeError("potrace n'a produit aucun chemin valide.")
 
     svg_path.write_text(_build_svg(paths_with_colors, width, height), encoding='utf-8')
-    logger.info('Vectorisation potrace : %d couleur(s) → %s', len(paths_with_colors), svg_path.name)
+    svg_size_kb = svg_path.stat().st_size // 1024
+    logger.info('Vectorisation potrace : %d couleur(s) → %s (%d KB)', len(paths_with_colors), svg_path.name, svg_size_kb)
+
+    # Simplifier systématiquement les nœuds avant inkstitch —
+    # la broderie n'a pas besoin de précision sub-pixel.
+    _simplify_svg_nodes(svg_path)
+
     return svg_path
+
+
+def _simplify_svg_nodes(svg_path: Path) -> None:
+    """
+    Réduit le nombre de nœuds du SVG via Inkscape path-simplify.
+    Silencieux si Inkscape absent. Modifie le fichier en place.
+    La broderie n'a pas besoin de précision sub-pixel : simplifier améliore les perfs inkstitch.
+    """
+    inkscape = shutil.which('inkscape')
+    if not inkscape:
+        return
+
+    before_kb = svg_path.stat().st_size // 1024
+    try:
+        result = subprocess.run(
+            [inkscape,
+             f'--actions=select-all;path-simplify;export-do',
+             f'--export-filename={svg_path}',
+             str(svg_path)],
+            capture_output=True,
+            timeout=30,
+        )
+        if result.returncode == 0 and svg_path.exists() and svg_path.stat().st_size > 0:
+            after_kb = svg_path.stat().st_size // 1024
+            logger.info('[DEBUG potrace] SVG simplifié par Inkscape : %d KB → %d KB', before_kb, after_kb)
+        else:
+            logger.warning('[DEBUG potrace] Inkscape simplify échoué (code %d)', result.returncode)
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        logger.warning('[DEBUG potrace] Inkscape simplify exception : %s', exc)

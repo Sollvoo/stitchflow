@@ -91,7 +91,8 @@ def convert_svg_to_pes(input_svg_path: Path, output_dir: Path) -> Path:
         )
     except subprocess.TimeoutExpired:
         raise InkstitchError(
-            f"La conversion a dépassé le délai de {timeout} secondes."
+            f"La conversion a dépassé le délai de {timeout} secondes. "
+            "Essayez de réduire la taille ou le nombre de couleurs."
         )
 
     if result.returncode != 0:

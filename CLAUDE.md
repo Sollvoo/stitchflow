@@ -105,9 +105,30 @@ python src/manage.py createsuperuser
 
 ---
 
+## Installation de VTracer CLI (binaire vendor/)
+
+Requis pour la vectorisation PNG/JPEG/WebP/PDF → SVG (vectoriseur primaire, ARM64-safe) :
+
+```bash
+mkdir -p vendor
+curl -L -o /tmp/vtracer.tar.gz \
+  https://github.com/visioncortex/vtracer/releases/download/0.6.4/vtracer-aarch64-apple-darwin.tar.gz
+tar -xzf /tmp/vtracer.tar.gz -C vendor/
+rm /tmp/vtracer.tar.gz
+chmod +x vendor/vtracer
+```
+
+Vérification : `vendor/vtracer --version` doit afficher `visioncortex VTracer 0.6.4`.
+
+Le binaire est ignoré par git (`.gitignore`). À re-télécharger après un clone.
+
+**Fallback automatique** : si `vendor/vtracer` absent, le pipeline tente VTracer Python, puis potrace, puis Inkscape.
+
+---
+
 ## Installation de potrace
 
-Requis pour la vectorisation PNG → SVG avec fidélité couleurs (Phase 4a) :
+Requis pour la vectorisation PNG → SVG avec fidélité couleurs (fallback si VTracer absent) :
 
 ```bash
 brew install potrace

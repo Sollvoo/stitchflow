@@ -14,7 +14,14 @@
     <div class="badge badge-warning badge-outline mt-3">pending</div>
     {% else %}
     <h3 class="text-lg font-semibold text-base-content">Conversion en cours…</h3>
-    <p class="text-sm text-base-content/50 mt-1">Ink/Stitch génère votre fichier PES</p>
+    <p class="text-sm text-base-content/50 mt-1">
+      {% if job.source_format == 'png' %}Vectorisation + Ink/Stitch génère votre fichier PES{% else %}Ink/Stitch génère votre fichier PES{% endif %}
+    </p>
+    {% if estimated_seconds %}
+    <p class="text-xs text-base-content/40 mt-1">
+      Temps estimé : ~{{ estimated_seconds }}s{% if job.source_format == 'png' and job.remove_background %} (dont ~4s suppression fond IA){% endif %}
+    </p>
+    {% endif %}
     <div class="badge badge-info badge-outline mt-3">processing</div>
     {% endif %}
     <div class="mt-6 w-full max-w-xs">

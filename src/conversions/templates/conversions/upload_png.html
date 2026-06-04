@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Convertir un PNG{% endblock %}
+{% block title %}Convertir une image{% endblock %}
 
 {% block content %}
 <div class="max-w-lg mx-auto">
@@ -8,14 +8,17 @@
   <!-- Header -->
   <div class="mb-8 text-center">
     <div class="w-16 h-16 rounded-2xl bg-secondary/10 flex items-center justify-center text-3xl mx-auto mb-4">🖼️</div>
-    <h1 class="text-2xl font-bold text-base-content">Convertir une image PNG</h1>
-    <p class="text-sm text-base-content/50 mt-1">PNG → SVG (VTracer) → PES via Ink/Stitch</p>
+    <h1 class="text-2xl font-bold text-base-content">Convertir une image</h1>
+    <p class="text-sm text-base-content/50 mt-1">PNG / JPEG / WebP → SVG → PES via Ink/Stitch</p>
   </div>
 
-  <!-- Lien vers SVG -->
-  <div class="mb-4 text-center">
+  <!-- Liens vers autres formats -->
+  <div class="mb-4 text-center flex justify-center gap-4">
     <a href="{% url 'conversions:upload' %}" class="text-sm text-base-content/40 hover:text-primary transition-colors">
-      ← Vous avez un SVG ? Utilisez le formulaire SVG
+      ← SVG
+    </a>
+    <a href="{% url 'conversions:upload_pdf' %}" class="text-sm text-base-content/40 hover:text-primary transition-colors">
+      PDF →
     </a>
   </div>
 
@@ -27,18 +30,22 @@
         enctype="multipart/form-data"
         x-data="{
           fileName: '',
+          fileExt: '',
           dragging: false,
           previewUrl: '',
           nColors: 6,
           removeBg: false,
           targetWidth: '',
+          isJpeg() { return ['jpg', 'jpeg'].includes(this.fileExt.toLowerCase()); },
           readPreview(file) {
             if (!file) return;
+            this.fileExt = file.name.split('.').pop() || '';
             const r = new FileReader();
             r.onload = (e) => { this.previewUrl = e.target.result };
             r.readAsDataURL(file);
           }
         }"
+        @png-analyzed.window="nColors = $event.detail.nColors; targetWidth = String($event.detail.width); removeBg = $event.detail.removeBg"
       >
         {% csrf_token %}
 
@@ -63,11 +70,14 @@
         >
           <div x-show="!fileName">
             <div class="text-4xl mb-3">🖼️</div>
-            <p class="font-semibold text-base-content">Glissez votre image PNG ici</p>
+            <p class="font-semibold text-base-content">Glissez votre image ici</p>
             <p class="text-sm text-base-content/50 mt-1">ou cliquez pour sélectionner</p>
-            <div class="mt-4">
+            <div class="mt-4 flex flex-wrap justify-center gap-1">
               <span class="badge badge-ghost badge-sm">.png</span>
-              <span class="badge badge-ghost badge-sm ml-1">max 20 Mo</span>
+              <span class="badge badge-ghost badge-sm">.jpg</span>
+              <span class="badge badge-ghost badge-sm">.jpeg</span>
+              <span class="badge badge-ghost badge-sm">.webp</span>
+              <span class="badge badge-ghost badge-sm">max 20 Mo</span>
             </div>
           </div>
           <div x-show="fileName" x-cloak>
@@ -80,7 +90,7 @@
             x-ref="fileInput"
             type="file"
             name="{{ form.original_file.html_name }}"
-            accept=".png,image/png"
+            accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
             class="hidden"
             hx-post="{% url 'conversions:analyze_png' %}"
             hx-trigger="change"
@@ -89,19 +99,17 @@
             hx-encoding="multipart/form-data"
             hx-params="{{ form.original_file.html_name }}"
             hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-            hx-on::after-settle="
-              const s = document.getElementById('png-suggestions');
-              if (!s || !s.dataset.nColors) return;
-              const r = document.querySelector('input[name=n_colors]');
-              if (r) { r.value = s.dataset.nColors; r.dispatchEvent(new Event('input', {bubbles: true})); }
-              const w = document.querySelector('input[name=target_width_mm]');
-              if (w) { w.value = s.dataset.width || ''; w.dispatchEvent(new Event('input', {bubbles: true})); }
-              const c = document.querySelector('input[name=remove_background]');
-              if (c) { c.checked = s.dataset.removeBg === 'true'; c.dispatchEvent(new Event('change', {bubbles: true})); }
-            "
             @change="const f = $event.target.files[0]; fileName = f?.name || ''; readPreview(f)"
             required
           />
+        </div>
+
+        <!-- Avertissement JPEG -->
+        <div x-show="isJpeg()" x-cloak role="alert" class="alert alert-warning alert-sm py-2">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <span class="text-sm">JPEG peut donner des résultats moins nets (artefacts de compression). PNG ou WebP sont préférables.</span>
         </div>
 
         <!-- Suggestions auto-paramétrage -->

@@ -8,7 +8,7 @@ from django.urls import reverse_lazy
 from PIL import Image
 
 from .models import ConversionJob
-from .forms import SVGUploadForm, PNGUploadForm
+from .forms import SVGUploadForm, PNGUploadForm, PDFUploadForm
 from .tasks import process_conversion_job
 
 
@@ -41,15 +41,37 @@ class UploadPNGView(CreateView):
 
     def form_valid(self, form):
         response = super().form_valid(form)
-        self.object.source_format = 'png'
-        self.object.original_filename = getattr(form, '_png_original_stem', '')
+        # source_format est déjà défini par form.save() (png/jpeg/webp)
+        self.object.original_filename = getattr(form, '_raster_original_stem', '')
         self.object.n_colors = form.cleaned_data.get('n_colors') or 6
         self.object.remove_background = form.cleaned_data.get('remove_background', False)
         self.object.save(update_fields=[
-            'source_format', 'original_filename', 'n_colors', 'remove_background',
+            'original_filename', 'n_colors', 'remove_background',
         ])
         process_conversion_job.delay(str(self.object.id))
         messages.success(self.request, 'Image reçue. La conversion est en cours.')
+        return response
+
+    def get_success_url(self):
+        return reverse_lazy('conversions:detail', kwargs={'pk': self.object.id})
+
+
+class UploadPDFView(CreateView):
+    model = ConversionJob
+    form_class = PDFUploadForm
+    template_name = 'conversions/upload_pdf.html'
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        # source_format = 'pdf' déjà défini par form.save()
+        self.object.original_filename = getattr(form, '_pdf_original_stem', '')
+        self.object.n_colors = form.cleaned_data.get('n_colors') or 6
+        self.object.remove_background = form.cleaned_data.get('remove_background', False)
+        self.object.save(update_fields=[
+            'original_filename', 'n_colors', 'remove_background',
+        ])
+        process_conversion_job.delay(str(self.object.id))
+        messages.success(self.request, 'PDF reçu. La conversion est en cours.')
         return response
 
     def get_success_url(self):
@@ -74,11 +96,91 @@ class JobStatusView(View):
 
     def _render_status(self, request, job):
         from django.template.loader import render_to_string
+
+        estimated_seconds = None
+        if job.status == job.Status.PROCESSING:
+            if job.source_format in ('png', 'jpeg', 'webp'):
+                n = job.n_colors or 6
+                estimated_seconds = 4 + int(n * 1.5) + (4 if job.remove_background else 0)
+            elif job.source_format == 'pdf':
+                n = job.n_colors or 6
+                estimated_seconds = 10 + int(n * 1.5) + (4 if job.remove_background else 0)
+            else:
+                estimated_seconds = 6
+
         return render_to_string(
             'conversions/partials/conversion_status.html',
-            {'job': job},
+            {'job': job, 'estimated_seconds': estimated_seconds},
             request=request,
         )
+
+
+def _suggest_width_from_svg(root) -> int:
+    """
+    Déduit une largeur cible en mm depuis les attributs SVG (viewBox, width, height).
+    Retourne une valeur dans [20, 360].
+    """
+    import re
+
+    def _parse_dim_px(value: str) -> float | None:
+        if not value:
+            return None
+        value = value.strip()
+        m = re.match(r'^([\d.]+)(mm|cm|in|pt|px)?$', value)
+        if not m:
+            return None
+        n = float(m.group(1))
+        unit = m.group(2) or 'px'
+        conversions = {'px': 1.0, 'mm': 2.8346, 'cm': 28.346, 'in': 72.0, 'pt': 1.0}
+        return n * conversions.get(unit, 1.0)
+
+    width_mm: float | None = None
+
+    viewbox = root.get('viewBox', '')
+    if viewbox:
+        parts = viewbox.replace(',', ' ').split()
+        if len(parts) == 4:
+            try:
+                vb_w = float(parts[2])
+                width_mm = vb_w * 0.353  # 1px ≈ 0.353mm à 72dpi
+            except ValueError:
+                pass
+
+    if width_mm is None:
+        w_attr = root.get('width', '')
+        w_px = _parse_dim_px(w_attr)
+        if w_px:
+            width_mm = w_px * 0.353
+
+    if width_mm is None:
+        return 80
+
+    if width_mm < 50:
+        return 80
+    if width_mm > 200:
+        return 120
+    return max(20, min(360, int(width_mm)))
+
+
+class AnalyzeSVGView(View):
+    """Analyse un SVG uploadé et retourne un fragment HTMX avec suggestion de largeur."""
+
+    def post(self, request):
+        file = request.FILES.get('original_file')
+        if not file:
+            return HttpResponse('', content_type='text/html')
+
+        try:
+            import xml.etree.ElementTree as ET
+            content = file.read(512 * 1024).decode('utf-8', errors='ignore')
+            root = ET.fromstring(content)
+            suggested_width = _suggest_width_from_svg(root)
+        except Exception:
+            return HttpResponse('', content_type='text/html')
+
+        return render(request, 'conversions/partials/svg_suggestions.html', {
+            'suggested_width': suggested_width,
+        })
 
 
 class AnalyzePNGView(View):

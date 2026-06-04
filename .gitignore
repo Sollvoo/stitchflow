@@ -45,3 +45,7 @@ celerybeat.pid
 # Coverage
 .coverage
 htmlcov/
+
+# Binaires vendored (volumineux, télécharger via setup)
+vendor/vtracer
+vendor/vtracer.exe

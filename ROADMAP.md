@@ -51,15 +51,21 @@ Objectif : accepter des images PNG et les vectoriser automatiquement en SVG.
 
 ---
 
-## Phase 4 — Qualité PNG + Smart UX + Nouveaux formats
+## Phase 4 — Qualité PNG + Smart UX + Nouveaux formats ✅
 
 Objectif : améliorer la fidélité couleurs, rendre l'outil simple pour n'importe quel utilisateur, et accepter tous les formats courants.
 
 ### 4a — Amélioration qualité vectorisation PNG ✅
-- [x] Résoudre le crash VTracer sur ARM64 macOS (SIGSEGV) — workaround : potrace CLI comme fallback prioritaire
-- [x] Améliorer la fidélité couleurs PNG→PES : Pillow MEDIANCUT + potrace par couleur → chaque path porte la vraie couleur (Red+Blue+Yellow au lieu de Gray+Red)
-- [x] Pipeline vectorisation : VTracer → **potrace** (quantize+masque binaire/couleur) → Inkscape (fallback ultime)
-- [x] `brew install potrace` documenté dans CLAUDE.md
+- [x] Résoudre le crash VTracer sur ARM64 macOS (SIGSEGV) — solution : binaire CLI vtracer précompilé ARM64 dans vendor/
+- [x] Améliorer la fidélité couleurs PNG→PES : VTracer CLI + consolidation couleurs → aplats propres par couleur
+- [x] Pipeline vectorisation : **VTracer CLI** (vendor/vtracer) → VTracer Python → potrace → Inkscape (fallbacks)
+- [x] `brew install potrace` documenté dans CLAUDE.md + instructions vtracer CLI dans CLAUDE.md
+- [x] Fix bug coordonnées SVG : potrace `--unit 10` → `--unit 1` (coords 10× trop grandes causaient timeout inkstitch)
+- [x] Simplification SVG systématique avant inkstitch (pas seulement si >80KB)
+- [x] Fix bug fond noir : preprocess_image() aplatissait l'alpha vers noir (RGBA→RGB sans fond blanc)
+- [x] Meilleurs paramètres potrace : alphamax 0.1, opttolerance 0.2, turdsize 2 (coins nets, détails préservés)
+- [x] Upscale plus fort : _POTRACE_MIN_DIM 400→600 px, cap 2×→3× (meilleure qualité texte)
+- [x] Fonction _consolidate_svg_colors() : fusion des couleurs similaires VTracer en N clusters pour aplats broderie
 
 ### 4b — Auto-paramétrage intelligent (Pillow, sans coût) ✅
 - [x] Analyse automatique du PNG à l'upload : endpoint HTMX `/conversions/analyze-png/` (Pillow MEDIANCUT 12 couleurs)
@@ -67,18 +73,19 @@ Objectif : améliorer la fidélité couleurs, rendre l'outil simple pour n'impor
 - [x] Affichage des valeurs suggérées avec bouton "Appliquer" qui met à jour le slider n_colors
 - [x] L'utilisateur peut modifier les valeurs avant de lancer la conversion
 
-### 4c — Support JPEG et WebP
-- [ ] Accepter JPEG et WebP en plus de PNG
-- [ ] Conversion interne JPEG/WebP → PNG avant d'entrer dans le pipeline (Pillow, 2 lignes)
-- [ ] Avertissement visible : "JPEG peut donner des résultats moins nets qu'un PNG ou SVG"
-- [ ] Validation magic bytes pour JPEG (`\xff\xd8\xff`) et WebP (`RIFF...WEBP`)
+### 4c — Support JPEG et WebP ✅
+- [x] Accepter JPEG et WebP en plus de PNG
+- [x] Conversion interne JPEG/WebP → PNG avant d'entrer dans le pipeline (Pillow, convert_to_png())
+- [x] Avertissement visible : "JPEG peut donner des résultats moins nets qu'un PNG ou SVG"
+- [x] Validation magic bytes pour JPEG (`\xff\xd8\xff`) et WebP (`RIFF...WEBP`)
 
-### 4d — Support PDF → PES
-- [ ] Accepter les fichiers PDF (logos, designs livrés par graphistes)
-- [ ] Rasterisation PDF → PNG haute résolution (300 dpi) via `pdf2image` + `poppler`
-- [ ] Entrée dans le pipeline PNG → SVG → PES existant
-- [ ] Gestion des PDFs multi-pages : convertir uniquement la première page par défaut
-- [ ] Tests : `test_pdf_processing.py`
+### 4d — Support PDF → PES ✅
+- [x] Accepter les fichiers PDF (logos, designs livrés par graphistes)
+- [x] Rasterisation PDF → PNG haute résolution (300 dpi) via `pdf2image` + `poppler`
+- [x] Entrée dans le pipeline PNG → SVG → PES existant
+- [x] Gestion des PDFs multi-pages : convertir uniquement la première page par défaut
+- [x] Fichiers de test : tests/jpeg/test-photo.jpg, tests/webp/test-logo.webp, tests/pdf/test-logo.pdf
+- [ ] Tests unitaires : test_pdf_processing.py, test_vtracer_cli.py
 
 ---
 

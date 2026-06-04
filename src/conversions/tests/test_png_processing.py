@@ -284,10 +284,13 @@ class VectorizePotraceTest(TestCase):
         )
 
         def fake_run(cmd, **kwargs):
-            out_idx = cmd.index('--output')
-            Path(cmd[out_idx + 1]).write_text(fake_potrace_svg)
             m = MagicMock()
             m.returncode = 0
+            # Appel potrace : écrire le SVG factice dans --output <path>
+            if '--output' in cmd:
+                out_idx = cmd.index('--output')
+                Path(cmd[out_idx + 1]).write_text(fake_potrace_svg)
+            # Appel _simplify_svg_nodes (inkscape --export-filename) : ne rien faire
             return m
 
         try:

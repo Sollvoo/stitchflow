@@ -113,7 +113,7 @@ CELERY_TASK_TRACK_STARTED = True
 # On macOS after installation: typically ~/.config/inkscape/extensions/inkstitch/inkstitch
 # or the path configured after installing the Ink/Stitch extension
 INKSTITCH_EXECUTABLE = config('INKSTITCH_EXECUTABLE', default='inkstitch')
-INKSTITCH_TIMEOUT = config('INKSTITCH_TIMEOUT', default=120, cast=int)
+INKSTITCH_TIMEOUT = config('INKSTITCH_TIMEOUT', default=300, cast=int)
 
 # SVG conversion settings
 SVG_MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB

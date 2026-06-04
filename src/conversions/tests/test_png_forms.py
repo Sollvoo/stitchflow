@@ -28,9 +28,24 @@ class PNGUploadFormTest(TestCase):
         self.assertTrue(all(c in '0123456789abcdef' for c in stem))
 
     def test_invalid_extension_rejected(self):
-        form = _form(VALID_PNG, name='test.jpg')
+        # .gif n'est pas accepté (seuls .png/.jpg/.jpeg/.webp le sont)
+        form = _form(VALID_PNG, name='test.gif')
         self.assertFalse(form.is_valid())
         self.assertIn('original_file', form.errors)
+
+    def test_jpeg_extension_accepted(self):
+        jpeg_magic = b'\xff\xd8\xff' + b'\x00' * 100
+        form = _form(jpeg_magic, name='test.jpg', extra={'n_colors': '6'})
+        self.assertTrue(form.is_valid(), form.errors)
+        instance = form.save(commit=False)
+        self.assertEqual(instance.source_format, 'jpeg')
+
+    def test_webp_extension_accepted(self):
+        webp_magic = b'RIFF' + b'\x00\x00\x00\x00' + b'WEBP' + b'\x00' * 80
+        form = _form(webp_magic, name='test.webp', extra={'n_colors': '6'})
+        self.assertTrue(form.is_valid(), form.errors)
+        instance = form.save(commit=False)
+        self.assertEqual(instance.source_format, 'webp')
 
     def test_wrong_magic_bytes_rejected(self):
         form = _form(b'NOTAPNG' + b'\x00' * 50)

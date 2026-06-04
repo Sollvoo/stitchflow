@@ -44,17 +44,31 @@ def process_conversion_job(self, job_id: str) -> None:
         output_dir = Path(settings.MEDIA_ROOT) / 'conversions' / 'outputs'
         preview_dir = Path(settings.MEDIA_ROOT) / 'conversions' / 'previews'
 
-        # --- Bloc PNG : vectorisation avant le pipeline SVG→PES ---
-        if job.source_format == 'png':
+        # --- Bloc raster : PNG / JPEG / WebP / PDF → vectorisation avant le pipeline SVG→PES ---
+        if job.source_format in ('png', 'jpeg', 'webp', 'pdf'):
             from .services.png_processing import (
                 validate_png,
                 preprocess_image,
                 remove_background,
                 vectorize_to_svg,
+                convert_to_png,
+                convert_pdf_to_png,
             )
 
             logger.info('[DEBUG task] n_colors=%s, remove_background=%s, target_width_mm=%s',
                         job.n_colors, job.remove_background, job.target_width_mm)
+
+            # Conversion vers PNG si nécessaire avant le pipeline
+            if job.source_format == 'pdf':
+                converted_png = convert_pdf_to_png(input_path)
+                tmp_png_paths.append(converted_png)
+                input_path = converted_png
+                logger.info("PDF rasterisé en PNG pour job %s", job_id)
+            elif job.source_format in ('jpeg', 'webp'):
+                converted_png = convert_to_png(input_path)
+                tmp_png_paths.append(converted_png)
+                input_path = converted_png
+                logger.info("%s converti en PNG pour job %s", job.source_format.upper(), job_id)
 
             validate_png(input_path)
 
@@ -78,7 +92,7 @@ def process_conversion_job(self, job_id: str) -> None:
             job.save(update_fields=['vectorized_svg_file', 'updated_at'])
 
             source_svg_path = tmp_svg_path
-        else:
+        else:  # svg
             source_svg_path = input_path
 
         # --- Pipeline SVG→PES commun ---

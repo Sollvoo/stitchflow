@@ -17,6 +17,7 @@ class SVGUploadForm(forms.ModelForm):
         widget=forms.NumberInput(attrs={
             'class': 'input input-bordered w-full',
             'placeholder': 'Ex : 100',
+            'x-model': 'targetWidth',
         }),
     )
 
@@ -70,6 +71,24 @@ class SVGUploadForm(forms.ModelForm):
         return instance
 
 
+_RASTER_EXTENSIONS = ('.png', '.jpg', '.jpeg', '.webp')
+_RASTER_ACCEPT = '.png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp'
+
+
+def _detect_raster_format(magic: bytes, filename: str) -> str:
+    """Détecte le format raster depuis les magic bytes. Lève ValidationError si non reconnu."""
+    if magic[:4] == b'\x89PNG':
+        return 'png'
+    if magic[:3] == b'\xff\xd8\xff':
+        return 'jpeg'
+    if magic[:4] == b'RIFF' and magic[8:12] == b'WEBP':
+        return 'webp'
+    ext = Path(filename).suffix.lower()
+    raise ValidationError(
+        f'Format non reconnu. Formats acceptés : PNG, JPEG, WebP (extension : {ext}).'
+    )
+
+
 class PNGUploadForm(forms.ModelForm):
     n_colors = forms.IntegerField(
         required=False,
@@ -110,7 +129,7 @@ class PNGUploadForm(forms.ModelForm):
         fields = ['original_file']
         widgets = {
             'original_file': forms.FileInput(attrs={
-                'accept': '.png,image/png',
+                'accept': _RASTER_ACCEPT,
                 'class': 'file-input file-input-bordered w-full',
             }),
         }
@@ -120,29 +139,112 @@ class PNGUploadForm(forms.ModelForm):
         if not file:
             raise ValidationError('Aucun fichier sélectionné.')
 
-        max_size = 20 * 1024 * 1024  # 20 Mo pour PNG (plus lourd que SVG)
+        max_size = 20 * 1024 * 1024
         if file.size > max_size:
             raise ValidationError(
                 f'Fichier trop volumineux. Maximum : {max_size // (1024 * 1024)} Mo.'
             )
 
-        if not file.name.lower().endswith('.png'):
-            raise ValidationError('Seuls les fichiers .png sont acceptés.')
+        ext = Path(file.name).suffix.lower()
+        if ext not in _RASTER_EXTENSIONS:
+            raise ValidationError(
+                f'Format non accepté ({ext}). Formats acceptés : PNG, JPEG, WebP.'
+            )
 
         file.seek(0)
-        magic = file.read(4)
+        magic = file.read(12)
         file.seek(0)
-        if magic != b'\x89PNG':
-            raise ValidationError('Le fichier ne semble pas être un PNG valide.')
+        fmt = _detect_raster_format(magic, file.name)
 
-        self._png_original_stem = Path(file.name).stem[:200]
-        file.name = f"{uuid.uuid4().hex}.png"
+        self._raster_original_stem = Path(file.name).stem[:200]
+        self._raster_source_format = fmt
+        file.name = f"{uuid.uuid4().hex}{ext}"
 
         return file
 
     def save(self, commit: bool = True) -> ConversionJob:
         instance = super().save(commit=False)
         instance.target_width_mm = self.cleaned_data.get('target_width_mm')
+        instance.source_format = getattr(self, '_raster_source_format', 'png')
+        if commit:
+            instance.save()
+        return instance
+
+
+class PDFUploadForm(forms.ModelForm):
+    n_colors = forms.IntegerField(
+        required=False,
+        min_value=2,
+        max_value=16,
+        initial=6,
+        label='Nombre de couleurs',
+        widget=forms.NumberInput(attrs={
+            'class': 'range range-primary range-sm',
+            'min': '2',
+            'max': '16',
+            'step': '1',
+            'x-model': 'nColors',
+        }),
+    )
+    remove_background = forms.BooleanField(
+        required=False,
+        label='Supprimer le fond automatiquement (IA)',
+        widget=forms.CheckboxInput(attrs={
+            'class': 'checkbox checkbox-primary',
+            'x-model': 'removeBg',
+        }),
+    )
+    target_width_mm = forms.IntegerField(
+        required=False,
+        min_value=20,
+        max_value=360,
+        label='Largeur souhaitée (mm)',
+        widget=forms.NumberInput(attrs={
+            'class': 'input input-bordered w-full',
+            'placeholder': 'Ex : 80',
+            'x-model': 'targetWidth',
+        }),
+    )
+
+    class Meta:
+        model = ConversionJob
+        fields = ['original_file']
+        widgets = {
+            'original_file': forms.FileInput(attrs={
+                'accept': '.pdf,application/pdf',
+                'class': 'file-input file-input-bordered w-full',
+            }),
+        }
+
+    def clean_original_file(self):
+        file = self.cleaned_data.get('original_file')
+        if not file:
+            raise ValidationError('Aucun fichier sélectionné.')
+
+        max_size = 50 * 1024 * 1024  # 50 Mo pour PDF
+        if file.size > max_size:
+            raise ValidationError(
+                f'Fichier trop volumineux. Maximum : {max_size // (1024 * 1024)} Mo.'
+            )
+
+        if not file.name.lower().endswith('.pdf'):
+            raise ValidationError('Seuls les fichiers .pdf sont acceptés.')
+
+        file.seek(0)
+        magic = file.read(4)
+        file.seek(0)
+        if magic != b'%PDF':
+            raise ValidationError('Le fichier ne semble pas être un PDF valide.')
+
+        self._pdf_original_stem = Path(file.name).stem[:200]
+        file.name = f"{uuid.uuid4().hex}.pdf"
+
+        return file
+
+    def save(self, commit: bool = True) -> ConversionJob:
+        instance = super().save(commit=False)
+        instance.target_width_mm = self.cleaned_data.get('target_width_mm')
+        instance.source_format = 'pdf'
         if commit:
             instance.save()
         return instance
