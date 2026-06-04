@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block title %}Convertir un PDF{% endblock %}
+
+{% block content %}
+<div class="max-w-lg mx-auto">
+
+  <!-- Header -->
+  <div class="mb-8 text-center">
+    <div class="w-16 h-16 rounded-2xl bg-accent/10 flex items-center justify-center text-3xl mx-auto mb-4">📄</div>
+    <h1 class="text-2xl font-bold text-base-content">Convertir un PDF</h1>
+    <p class="text-sm text-base-content/50 mt-1">PDF → PNG (300 dpi) → SVG → PES via Ink/Stitch</p>
+  </div>
+
+  <!-- Liens vers autres formats -->
+  <div class="mb-4 text-center flex justify-center gap-4">
+    <a href="{% url 'conversions:upload' %}" class="text-sm text-base-content/40 hover:text-primary transition-colors">
+      ← SVG
+    </a>
+    <a href="{% url 'conversions:upload_png' %}" class="text-sm text-base-content/40 hover:text-primary transition-colors">
+      ← PNG / JPEG
+    </a>
+  </div>
+
+  <!-- Alerte première page -->
+  <div role="alert" class="alert alert-info mb-4 py-2">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+    <span class="text-sm">Seule la <strong>première page</strong> du PDF sera convertie.</span>
+  </div>
+
+  <div class="card bg-base-100 shadow-lg border border-base-200">
+    <div class="card-body gap-6">
+
+      <form
+        method="post"
+        enctype="multipart/form-data"
+        x-data="{
+          fileName: '',
+          dragging: false,
+          nColors: 6,
+          removeBg: false,
+          targetWidth: ''
+        }"
+      >
+        {% csrf_token %}
+
+        <!-- Erreurs globales -->
+        {% if form.non_field_errors %}
+        <div role="alert" class="alert alert-error">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          {% for error in form.non_field_errors %}<span>{{ error }}</span>{% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Zone de dépôt -->
+        <div
+          class="border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all"
+          :class="dragging ? 'border-accent bg-accent/5' : 'border-base-300 hover:border-accent/50 hover:bg-base-50'"
+          @dragover.prevent="dragging = true"
+          @dragleave.prevent="dragging = false"
+          @drop.prevent="dragging = false; const f = $event.dataTransfer.files[0]; fileName = f?.name || ''; $refs.fileInput.files = $event.dataTransfer.files"
+          @click="$refs.fileInput.click()"
+        >
+          <div x-show="!fileName">
+            <div class="text-4xl mb-3">📄</div>
+            <p class="font-semibold text-base-content">Glissez votre PDF ici</p>
+            <p class="text-sm text-base-content/50 mt-1">ou cliquez pour sélectionner</p>
+            <div class="mt-4 flex flex-wrap justify-center gap-1">
+              <span class="badge badge-ghost badge-sm">.pdf</span>
+              <span class="badge badge-ghost badge-sm">max 50 Mo</span>
+            </div>
+          </div>
+          <div x-show="fileName" x-cloak>
+            <div class="text-4xl mb-3">✅</div>
+            <p class="font-semibold text-success" x-text="fileName"></p>
+            <p class="text-xs text-base-content/40 mt-1">Cliquez pour changer de fichier</p>
+          </div>
+
+          <input
+            x-ref="fileInput"
+            type="file"
+            name="{{ form.original_file.html_name }}"
+            accept=".pdf,application/pdf"
+            class="hidden"
+            @change="const f = $event.target.files[0]; fileName = f?.name || ''"
+            required
+          />
+        </div>
+
+        <!-- Erreur fichier -->
+        {% if form.original_file.errors %}
+        <div role="alert" class="alert alert-error alert-sm">
+          {% for error in form.original_file.errors %}<span class="text-sm">{{ error }}</span>{% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Suppression du fond -->
+        <div class="form-control">
+          <label class="label cursor-pointer justify-start gap-3">
+            {{ form.remove_background }}
+            <div>
+              <span class="label-text font-medium">Supprimer le fond automatiquement</span>
+              <span class="label-text-alt text-base-content/40 block">Recommandé pour les logos sur fond blanc — utilise l'IA (rembg)</span>
+            </div>
+          </label>
+        </div>
+
+        <!-- Nombre de couleurs -->
+        <div class="form-control">
+          <label class="label pb-1">
+            <span class="label-text font-medium">Nombre de couleurs de fil</span>
+            <span class="label-text-alt text-base-content/60 font-semibold" x-text="nColors + ' couleur' + (nColors > 1 ? 's' : '')"></span>
+          </label>
+          <input
+            type="range"
+            name="{{ form.n_colors.html_name }}"
+            min="2" max="16" step="1"
+            class="range range-accent range-sm"
+            x-model="nColors"
+            value="6"
+          />
+          <div class="flex justify-between text-xs text-base-content/30 mt-1 px-1">
+            <span>2 (simple)</span>
+            <span>16 (complexe)</span>
+          </div>
+          <label class="label pt-1">
+            <span class="label-text-alt text-base-content/40">Plus de couleurs = design plus détaillé, mais broderie plus longue.</span>
+          </label>
+          {% if form.n_colors.errors %}
+          <div class="text-error text-sm mt-1">
+            {% for error in form.n_colors.errors %}<span>{{ error }}</span>{% endfor %}
+          </div>
+          {% endif %}
+        </div>
+
+        <!-- Taille de broderie -->
+        <div class="form-control">
+          <label class="label pb-1">
+            <span class="label-text font-medium">Largeur souhaitée <span class="text-base-content/40 font-normal">(optionnel)</span></span>
+            <span class="label-text-alt text-base-content/40">20 – 360 mm</span>
+          </label>
+          <div class="flex items-center gap-2">
+            {{ form.target_width_mm }}
+            <span class="text-sm text-base-content/50 shrink-0">mm</span>
+          </div>
+          <label class="label pt-1">
+            <span class="label-text-alt text-base-content/40">Laisser vide pour conserver les dimensions vectorisées. Le ratio est préservé.</span>
+          </label>
+          {% if form.target_width_mm.errors %}
+          <div class="text-error text-sm mt-1">
+            {% for error in form.target_width_mm.errors %}<span>{{ error }}</span>{% endfor %}
+          </div>
+          {% endif %}
+        </div>
+
+        <!-- Submit -->
+        <button type="submit" class="btn btn-accent w-full gap-2" :disabled="!fileName">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+          Convertir le PDF
+        </button>
+      </form>
+
+    </div>
+  </div>
+
+  <!-- Info pipeline -->
+  <div class="mt-6 flex items-start gap-3 text-sm text-base-content/50 px-2">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0 mt-0.5 text-info" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+    Pipeline : rasterisation PDF 300 dpi (première page) → nettoyage → vectorisation SVG → conversion PES (Ink/Stitch). Plus long qu'un SVG direct.
+  </div>
+
+</div>
+{% endblock %}
