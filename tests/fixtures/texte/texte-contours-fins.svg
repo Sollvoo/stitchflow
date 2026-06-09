@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200" viewBox="0 0 400 200">
+  <rect width="400" height="200" fill="#F8F8F8"/>
+  <text x="200" y="80" font-family="Helvetica,Arial,sans-serif" font-size="52" font-weight="bold" fill="none" stroke="#1A3A6B" stroke-width="2" text-anchor="middle">STITCH</text>
+  <text x="200" y="140" font-family="Helvetica,Arial,sans-serif" font-size="36" fill="#CC2200" stroke="#880000" stroke-width="1" text-anchor="middle">FLOW</text>
+  <line x1="40" y1="155" x2="360" y2="155" stroke="#C8A84B" stroke-width="3"/>
+  <text x="200" y="182" font-family="Helvetica,Arial,sans-serif" font-size="14" fill="#666666" text-anchor="middle" letter-spacing="8">BRODERIE NUMÉRIQUE</text>
+</svg>

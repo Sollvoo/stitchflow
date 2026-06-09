@@ -121,6 +121,75 @@
     </div>
     {% endif %}
 
+    <!-- Score qualité broderie -->
+    {% if job.conversion_metadata.quality_score is not None %}
+    <div class="mt-4 w-full">
+      <div class="collapse collapse-arrow bg-base-200/50 border border-base-200 rounded-xl">
+        <input type="checkbox" />
+        <div class="collapse-title py-3 px-4 flex items-center gap-3 min-h-0">
+          <span class="text-xs text-base-content/50 font-medium uppercase tracking-wide">Score qualité broderie</span>
+          <div class="badge badge-{{ job.conversion_metadata.quality_color }} badge-sm font-bold ml-auto">
+            {{ job.conversion_metadata.quality_score }}/100 — {{ job.conversion_metadata.quality_label }}
+          </div>
+        </div>
+        <div class="collapse-content px-4 pb-3">
+          <div class="w-full bg-base-300 rounded-full h-2 mb-3">
+            <div class="bg-{{ job.conversion_metadata.quality_color }} h-2 rounded-full transition-all"
+                 style="width: {{ job.conversion_metadata.quality_score }}%"></div>
+          </div>
+          {% if job.conversion_metadata.quality_details %}
+          <ul class="space-y-1.5 text-xs text-base-content/70">
+            {% with d=job.conversion_metadata.quality_details %}
+            {% if d.threads %}
+            <li class="flex items-start gap-2">
+              <span class="shrink-0 {% if d.threads.score >= 80 %}text-success{% elif d.threads.score >= 40 %}text-warning{% else %}text-error{% endif %}">●</span>
+              <span><strong>Fils :</strong> {{ d.threads.message }}</span>
+            </li>
+            {% endif %}
+            {% if d.stitches %}
+            <li class="flex items-start gap-2">
+              <span class="shrink-0 {% if d.stitches.score >= 80 %}text-success{% elif d.stitches.score >= 40 %}text-warning{% else %}text-error{% endif %}">●</span>
+              <span><strong>Points :</strong> {{ d.stitches.message }}</span>
+            </li>
+            {% endif %}
+            {% if d.dimensions %}
+            <li class="flex items-start gap-2">
+              <span class="shrink-0 {% if d.dimensions.score >= 80 %}text-success{% elif d.dimensions.score >= 40 %}text-warning{% else %}text-error{% endif %}">●</span>
+              <span><strong>Dimensions :</strong> {{ d.dimensions.message }}</span>
+            </li>
+            {% endif %}
+            {% if d.jumps %}
+            <li class="flex items-start gap-2">
+              <span class="shrink-0 {% if d.jumps.score >= 80 %}text-success{% elif d.jumps.score >= 40 %}text-warning{% else %}text-error{% endif %}">●</span>
+              <span><strong>Sauts de fil :</strong> {{ d.jumps.message }}</span>
+            </li>
+            {% endif %}
+            {% if d.density %}
+            <li class="flex items-start gap-2">
+              <span class="shrink-0 {% if d.density.score >= 80 %}text-success{% elif d.density.score >= 40 %}text-warning{% else %}text-error{% endif %}">●</span>
+              <span><strong>Densité :</strong> {{ d.density.message }}</span>
+            </li>
+            {% endif %}
+            {% if d.color_fidelity %}
+            <li class="flex items-start gap-2">
+              <span class="shrink-0 {% if d.color_fidelity.score >= 80 %}text-success{% elif d.color_fidelity.score >= 40 %}text-warning{% else %}text-error{% endif %}">●</span>
+              <span><strong>Fidélité couleurs :</strong> {{ d.color_fidelity.message }}</span>
+            </li>
+            {% endif %}
+            {% if d.coverage %}
+            <li class="flex items-start gap-2">
+              <span class="shrink-0 {% if d.coverage.score >= 80 %}text-success{% elif d.coverage.score >= 40 %}text-warning{% else %}text-error{% endif %}">●</span>
+              <span><strong>Couverture vectorisation :</strong> {{ d.coverage.message }}</span>
+            </li>
+            {% endif %}
+            {% endwith %}
+          </ul>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     <div class="badge badge-success badge-outline mt-4">completed</div>
   </div>
 </div>

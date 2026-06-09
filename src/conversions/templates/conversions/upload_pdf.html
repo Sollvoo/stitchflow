@@ -43,6 +43,7 @@
           removeBg: false,
           targetWidth: ''
         }"
+        @pdf-analyzed.window="targetWidth = String($event.detail.width)"
       >
         {% csrf_token %}
 
@@ -86,6 +87,13 @@
             name="{{ form.original_file.html_name }}"
             accept=".pdf,application/pdf"
             class="hidden"
+            hx-post="{% url 'conversions:analyze_pdf' %}"
+            hx-trigger="change"
+            hx-target="#pdf-suggestions"
+            hx-swap="outerHTML"
+            hx-encoding="multipart/form-data"
+            hx-params="{{ form.original_file.html_name }}"
+            hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
             @change="const f = $event.target.files[0]; fileName = f?.name || ''"
             required
           />
@@ -97,6 +105,9 @@
           {% for error in form.original_file.errors %}<span class="text-sm">{{ error }}</span>{% endfor %}
         </div>
         {% endif %}
+
+        <!-- Analyse automatique PDF (vectoriel vs scanné) -->
+        <div id="pdf-suggestions"></div>
 
         <!-- Suppression du fond -->
         <div class="form-control">
@@ -144,7 +155,14 @@
             <span class="label-text-alt text-base-content/40">20 – 360 mm</span>
           </label>
           <div class="flex items-center gap-2">
-            {{ form.target_width_mm }}
+            <input
+              type="number"
+              name="{{ form.target_width_mm.html_name }}"
+              min="20" max="360"
+              placeholder="Ex : 80"
+              class="input input-bordered input-sm w-28"
+              x-model="targetWidth"
+            />
             <span class="text-sm text-base-content/50 shrink-0">mm</span>
           </div>
           <label class="label pt-1">
@@ -174,7 +192,7 @@
     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0 mt-0.5 text-info" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
-    Pipeline : rasterisation PDF 300 dpi (première page) → nettoyage → vectorisation SVG → conversion PES (Ink/Stitch). Plus long qu'un SVG direct.
+    Le type de pipeline (vectoriel direct ou rasterisation) est détecté automatiquement après sélection du fichier.
   </div>
 
 </div>

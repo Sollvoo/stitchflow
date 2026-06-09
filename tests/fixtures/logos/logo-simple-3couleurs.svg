@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <rect width="200" height="200" fill="#FFFFFF"/>
+  <path d="M100,20 L170,50 L170,130 Q170,170 100,185 Q30,170 30,130 L30,50 Z" fill="#1A3A6B" stroke="#0D1F3C" stroke-width="3"/>
+  <path d="M100,20 L115,50 L115,185 Q107,187 100,185 Q93,187 85,185 L85,50 Z" fill="#C8A84B"/>
+  <text x="100" y="125" font-family="Helvetica,Arial,sans-serif" font-size="72" font-weight="bold" fill="#CC2200" text-anchor="middle" dominant-baseline="middle">S</text>
+</svg>

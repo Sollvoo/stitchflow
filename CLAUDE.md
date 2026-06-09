@@ -2,7 +2,9 @@
 
 ## Description du projet
 
-StitchFlow est une application web Django permettant de convertir des fichiers SVG en fichiers de broderie `.PES` via Ink/Stitch CLI. Elle est conçue pour évoluer progressivement vers PNG → SVG → PES avec IA et corrections humaines.
+StitchFlow est une application web Django permettant de convertir des fichiers SVG, PNG, JPEG, WebP et PDF en fichiers de broderie `.PES` via Ink/Stitch CLI.
+
+**État actuel (juin 2025) :** Phases 1–6 terminées. Pipeline complet opérationnel. Phase 7 (assistant pré-conversion) et Phase 8 (éditeur SVG) à démarrer.
 
 ## Stack technique
 
@@ -20,7 +22,7 @@ StitchFlow est une application web Django permettant de convertir des fichiers S
 **TOUJOURS utiliser le venv du projet :**
 
 ```bash
-source /Users/hugobonnet/Documents/StitchFlow/.venv/bin/activate
+source /Users/hugobonnet/Developer/StitchFlow/.venv/bin/activate
 ```
 
 Ne jamais utiliser le Python système ou créer un nouveau venv pour ce projet. Le venv est à `.venv/` à la racine.
@@ -180,6 +182,22 @@ La conversion échouera avec `FileNotFoundError`. Le job passera en statut `fail
 
 ---
 
+## Machine cible
+
+**Brother entrepreneur pro X PR1050X** — machine de broderie professionnelle 10 aiguilles.
+
+| Contrainte | Valeur |
+|---|---|
+| Aiguilles | 10 → max 10 fils distincts par design (idéal : ≤7) |
+| Zone de broderie max | 360×200mm (grand cercle), 200×200mm (standard) |
+| Format natif | PES (v1 universel recommandé, v6 supporté) |
+| Points max recommandés | <500k par fichier |
+| Vitesse estimée | ~600 points/min |
+
+Tout design converti doit être compatible avec ces limites. Une conversion à 115 fils est physiquement impossible sur cette machine.
+
+---
+
 ## Architecture du projet
 
 ```
@@ -197,22 +215,36 @@ StitchFlow/
 │   │   └── templates/
 │   │       ├── base.html        ← layout principal (django_vite)
 │   │       └── home.html
-│   ├── conversions/             ← app Django pipeline SVG→PES
-│   │   ├── models.py            ← ConversionJob
-│   │   ├── views.py
+│   ├── conversions/             ← app Django pipeline complet
+│   │   ├── models.py            ← ConversionJob (UUID, statuts, FileField)
+│   │   ├── views.py             ← UnifiedUploadView, FormFragmentView, status API
 │   │   ├── urls.py
-│   │   ├── forms.py             ← SVGUploadForm avec validation
-│   │   ├── tasks.py             ← tâche Celery
+│   │   ├── forms.py             ← SVGUploadForm, PNGUploadForm, PDFUploadForm
+│   │   ├── tasks.py             ← process_conversion_job() Celery
 │   │   ├── services/
-│   │   │   ├── inkstitch.py     ← convert_svg_to_pes()
-│   │   │   ├── validation.py
-│   │   │   └── previews.py
+│   │   │   ├── inkstitch.py     ← convert_svg_to_pes() via CLI
+│   │   │   ├── validation.py    ← validate_svg_content()
+│   │   │   ├── previews.py      ← generate_pes_preview() + extract_pes_metadata() + score qualité
+│   │   │   ├── svg_utils.py     ← post-traitement SVG (filtrage, reorder, fusion couleurs, stroke-fix)
+│   │   │   ├── png_processing.py ← vectorisation PNG/JPEG/WebP → SVG (VTracer, potrace)
+│   │   │   ├── pdf_processing.py ← extraction SVG depuis PDF (pdftocairo, pdf2image)
+│   │   │   ├── thread_color.py  ← snap couleurs SVG → palette Brother (CIE Lab)
+│   │   │   └── _vtracer_helper.py ← helper CLI vendor/vtracer ARM64
 │   │   └── templates/
 │   │       └── conversions/
-│   │           ├── upload.html
-│   │           ├── detail.html
+│   │           ├── upload_unified.html  ← interface drag-and-drop unique (Phase 5)
+│   │           ├── upload.html          ← upload SVG direct (legacy)
+│   │           ├── upload_pdf.html      ← upload PDF (legacy)
+│   │           ├── upload_png.html      ← upload PNG (legacy)
+│   │           ├── detail.html          ← page de résultat
 │   │           └── partials/
-│   │               └── conversion_status.html  ← fragment HTMX
+│   │               ├── conversion_status.html  ← fragment HTMX polling
+│   │               ├── form_svg.html            ← fragment formulaire SVG
+│   │               ├── form_raster.html         ← fragment formulaire PNG/JPEG/WebP/PDF
+│   │               ├── form_unknown.html        ← fragment format non reconnu
+│   │               ├── svg_suggestions.html     ← analyse SVG uploadé
+│   │               ├── png_suggestions.html     ← analyse PNG uploadé
+│   │               └── pdf_suggestions.html     ← analyse PDF uploadé
 │   └── frontend/                ← projet Vite (npm, assets)
 │       ├── package.json
 │       ├── vite.config.js
@@ -224,9 +256,25 @@ StitchFlow/
 ├── .claude/                     ← règles et commandes Claude Code
 │   ├── rules/
 │   │   ├── 00-index.md
-│   │   └── detailed/
+│   │   └── detailed/            ← règles détaillées (sécurité, style, etc.)
 │   └── commands/
 │       └── commit.md
+├── docs/
+│   └── pipeline-technique.md    ← documentation complète du pipeline (MAINTENIR À JOUR)
+├── tests/
+│   ├── manual/                  ← fichiers source pour tests manuels via l'UI
+│   │   ├── svg/                 ← 9 SVGs numérotés 01-09 (+ 05b)
+│   │   ├── png/                 ← 11 PNGs numérotés 01-11
+│   │   ├── jpeg/                ← 2 JPEGs
+│   │   ├── pdf/                 ← 4 PDFs (vectoriels + scannés)
+│   │   └── webp/                ← 1 WebP
+│   ├── fixtures/                ← fixtures pour run_integration.py
+│   │   ├── logos/, ecusson/, texte/, geometrique/, pdf/
+│   ├── results/                 ← PES générés localement (gitignored)
+│   ├── run_integration.py       ← tests E2E automatisés (Phase 6d)
+│   └── generate_fixtures.py     ← génère tests/fixtures/
+├── vendor/
+│   └── vtracer                  ← binaire ARM64 (gitignored, re-télécharger après clone)
 ├── .env                         ← secrets locaux (ignoré git)
 ├── .env.example
 ├── .gitignore
@@ -239,21 +287,21 @@ StitchFlow/
 
 ---
 
-## Pipeline SVG → PES
+## Pipeline technique
 
-1. Utilisateur uploade un `.svg` via le formulaire
-2. `SVGUploadForm` valide : extension, taille (10 Mo max), contenu XML, renomme avec UUID
-3. `ConversionJob` créé en base (status = `pending`)
-4. Tâche Celery `process_conversion_job` lancée avec `.delay(job_id)`
-5. Le worker Celery :
-   - Passe le job en `processing`
-   - Appelle `convert_svg_to_pes(input_path, output_dir)`
-   - `inkstitch --extension=zip --format-pes=True input.svg` → stdout binaire = ZIP
-   - Extrait le `.pes` du ZIP
-   - Sauvegarde dans `media/conversions/outputs/`
-   - Passe en `completed` (ou `failed` si erreur)
-6. La page de détail utilise HTMX (`hx-trigger="every 2s"`) pour interroger `/conversions/<id>/status/`
-7. Le partial se rafraîchit jusqu'à statut terminal, puis affiche le bouton de téléchargement
+Documentation complète du pipeline de conversion : `docs/pipeline-technique.md`
+
+**Règle obligatoire :** Mettre à jour `docs/pipeline-technique.md` à chaque modification du pipeline (nouvelles étapes, paramètres modifiés, nouveaux services).
+
+### Résumé pipeline SVG → PES
+
+```
+Source → [Vectorisation si raster] → validate → remove_bg → filter_micro → reorder
+→ group_colors → scale → force_max_colors(10) → snap_brother → group_colors
+→ normalize_stroke → Ink/Stitch CLI → PES → preview + score
+```
+
+Fichier principal : `conversions/tasks.py` → `process_conversion_job()`
 
 ---
 

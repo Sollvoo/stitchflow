@@ -1,0 +1,21 @@
+<div class="form-control">
+  <label class="label pb-1">
+    <span class="label-text font-medium">Largeur souhaitée <span class="text-base-content/40 font-normal">(optionnel)</span></span>
+    <span class="label-text-alt text-base-content/40">20 – 360 mm</span>
+  </label>
+  <div class="flex items-center gap-2">
+    <input
+      type="number"
+      name="{{ form.target_width_mm.html_name }}"
+      min="20"
+      max="360"
+      placeholder="Ex : 100"
+      class="input input-bordered input-sm w-28"
+      x-model="targetWidth"
+    />
+    <span class="text-sm text-base-content/50 shrink-0">mm</span>
+  </div>
+  <label class="label pt-1">
+    <span class="label-text-alt text-base-content/40">Laisser vide pour conserver la taille du SVG original. Le ratio est préservé.</span>
+  </label>
+</div>

@@ -1,9 +1,14 @@
 """
 Utilitaires pour la manipulation de fichiers SVG.
 """
+import logging
+import math
+import re
 import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Facteurs de conversion vers mm
 _UNITS_TO_MM: dict[str, float] = {
@@ -80,6 +85,589 @@ def get_svg_dimensions_mm(svg_path: Path) -> tuple[float | None, float | None]:
     except Exception:
         pass
     return None, None
+
+
+_COORD_RE = re.compile(r'[-+]?\d*\.?\d+')
+_SVG_NS = 'http://www.w3.org/2000/svg'
+
+
+def _path_centroid(d: str) -> tuple[float, float] | None:
+    """Centre du bounding box des coordonnées d'un attribut d SVG. Retourne None si aucun nombre."""
+    nums = [float(m) for m in _COORD_RE.findall(d or '')]
+    if not nums:
+        return None
+    xs = nums[0::2]
+    ys = nums[1::2]
+    if not xs or not ys:
+        return None
+    return (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+
+
+def _greedy_nn(items: list, centroid_fn) -> list:
+    """Greedy nearest-neighbor depuis (0, 0). Retourne items réordonnés."""
+    if len(items) <= 1:
+        return items
+    remaining = list(items)
+    ordered = []
+    cx, cy = 0.0, 0.0
+    while remaining:
+        best_i, best_d = 0, float('inf')
+        for i, item in enumerate(remaining):
+            c = centroid_fn(item)
+            if c is None:
+                c = (0.0, 0.0)
+            d = (c[0] - cx) ** 2 + (c[1] - cy) ** 2
+            if d < best_d:
+                best_d, best_i = d, i
+        chosen = remaining.pop(best_i)
+        c = centroid_fn(chosen)
+        if c:
+            cx, cy = c
+        ordered.append(chosen)
+    return ordered
+
+
+def reorder_svg_paths_for_minimal_jumps(svg_path: Path) -> None:
+    """
+    Réordonne les paths SVG via nearest-neighbor pour minimiser les déplacements à vide.
+    Modifie le fichier en place.
+    - Réordonne les <path> DANS chaque parent (<g> ou root)
+    - Réordonne les <g> directs du root entre eux
+    """
+    _register_svg_namespaces()
+    try:
+        tree = ET.parse(svg_path)
+    except ET.ParseError:
+        return
+
+    root = tree.getroot()
+    total_paths = 0
+
+    def _path_centroid_el(el: ET.Element) -> tuple[float, float] | None:
+        return _path_centroid(el.get('d', ''))
+
+    def _group_centroid(g: ET.Element) -> tuple[float, float] | None:
+        cs = [_path_centroid_el(p) for p in g.iter() if p.tag.endswith('path')]
+        valid = [c for c in cs if c is not None]
+        if not valid:
+            return None
+        return sum(c[0] for c in valid) / len(valid), sum(c[1] for c in valid) / len(valid)
+
+    ns_path = f'{{{_SVG_NS}}}path'
+    ns_g = f'{{{_SVG_NS}}}g'
+
+    # Réordonner les paths dans chaque <g> direct
+    direct_groups = [ch for ch in root if ch.tag in (ns_g, 'g')]
+    for g in direct_groups:
+        paths = [ch for ch in g if ch.tag in (ns_path, 'path')]
+        if len(paths) <= 1:
+            continue
+        reordered = _greedy_nn(paths, _path_centroid_el)
+        for p in paths:
+            g.remove(p)
+        for p in reordered:
+            g.append(p)
+        total_paths += len(reordered)
+
+    # Réordonner les <g> eux-mêmes dans le root
+    if len(direct_groups) > 1:
+        for g in direct_groups:
+            root.remove(g)
+        for g in _greedy_nn(direct_groups, _group_centroid):
+            root.append(g)
+
+    # Réordonner aussi les <path> directs sous la racine (VTracer flat)
+    direct_paths = [ch for ch in root if ch.tag in (ns_path, 'path')]
+    if len(direct_paths) > 1:
+        reordered = _greedy_nn(direct_paths, _path_centroid_el)
+        for p in direct_paths:
+            root.remove(p)
+        for p in reordered:
+            root.append(p)
+        total_paths += len(reordered)
+
+    logger.debug('[6a] reordered %d paths, %d groups in %s', total_paths, len(direct_groups), svg_path.name)
+    tree.write(svg_path, encoding='unicode', xml_declaration=True)
+
+
+def filter_micro_paths(svg_path: Path, target_width_mm: int, min_area_mm2: float = 0.1) -> int:
+    """
+    Supprime les <path> dont la surface estimée est inférieure à min_area_mm2.
+    Retourne le nombre de paths supprimés. Ne supprime jamais le dernier path.
+    """
+    _register_svg_namespaces()
+    try:
+        tree = ET.parse(svg_path)
+    except ET.ParseError:
+        return 0
+
+    root = tree.getroot()
+
+    # Calcul du facteur d'échelle mm/unit
+    vb = root.get('viewBox', '')
+    vb_parts = vb.split() if vb else []
+    mm_per_unit: float | None = None
+
+    if target_width_mm > 0 and len(vb_parts) == 4:
+        try:
+            vb_w = float(vb_parts[2])
+            if vb_w > 0:
+                mm_per_unit = target_width_mm / vb_w
+        except ValueError:
+            pass
+
+    if mm_per_unit is None:
+        w_mm, _ = get_svg_dimensions_mm(svg_path)
+        if w_mm and len(vb_parts) == 4:
+            try:
+                vb_w = float(vb_parts[2])
+                if vb_w > 0:
+                    mm_per_unit = w_mm / vb_w
+            except ValueError:
+                pass
+
+    if mm_per_unit is None:
+        mm_per_unit = 25.4 / 96  # fallback 96 dpi
+
+    ns_path = f'{{{_SVG_NS}}}path'
+
+    def _path_area_mm2(el: ET.Element) -> float:
+        nums = [float(m) for m in _COORD_RE.findall(el.get('d', ''))]
+        if len(nums) < 2:
+            return 0.0
+        xs, ys = nums[0::2], nums[1::2]
+        if not xs or not ys:
+            return 0.0
+        bbox_w = (max(xs) - min(xs)) * mm_per_unit
+        bbox_h = (max(ys) - min(ys)) * mm_per_unit
+        return bbox_w * bbox_h
+
+    # Collecter tous les paths avec leur parent et leur aire
+    path_records: list[tuple[ET.Element, ET.Element, float]] = []  # (path, parent, area)
+    for parent in [root] + list(root.iter()):
+        for child in list(parent):
+            if child.tag in (ns_path, 'path'):
+                path_records.append((child, parent, _path_area_mm2(child)))
+
+    n_total = len(path_records)
+    if n_total == 0:
+        return 0
+
+    to_remove = [(path, parent) for path, parent, area in path_records if area <= min_area_mm2]
+    n_remove = len(to_remove)
+
+    # Garde anti-vide : conserver au moins 1 path
+    if n_remove >= n_total:
+        logger.warning('[6b] tous les %d paths seraient supprimés → conservation du plus grand', n_total)
+        largest = max(path_records, key=lambda x: x[2])
+        to_remove = [(p, par) for p, par, _ in path_records if p is not largest[0]]
+        n_remove = len(to_remove)
+
+    if n_remove == 0:
+        return 0
+
+    if n_remove / n_total > 0.10:
+        logger.warning('[6b] %d/%d paths supprimés (>10%%) — vectorisation potentiellement dégradée dans %s',
+                       n_remove, n_total, svg_path.name)
+
+    for path, parent in to_remove:
+        try:
+            parent.remove(path)
+        except ValueError:
+            pass
+
+    tree.write(svg_path, encoding='unicode', xml_declaration=True)
+    return n_remove
+
+
+def _hex_to_rgb(hex_color: str) -> tuple[int, int, int] | None:
+    """Convertit '#rrggbb' ou '#rgb' en (R, G, B). Retourne None si invalide."""
+    h = hex_color.strip().lstrip('#')
+    if len(h) == 3:
+        h = h[0] * 2 + h[1] * 2 + h[2] * 2
+    if len(h) != 6:
+        return None
+    try:
+        return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    except ValueError:
+        return None
+
+
+def _rgb_to_lab_utils(r: int, g: int, b: int) -> tuple[float, float, float]:
+    """Conversion RGB → CIE Lab (D65, 2°) sans dépendance externe."""
+    def _linearize(c: float) -> float:
+        c /= 255.0
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+    lr, lg, lb = _linearize(r), _linearize(g), _linearize(b)
+    x = (lr * 0.4124 + lg * 0.3576 + lb * 0.1805) / 0.95047
+    y = (lr * 0.2126 + lg * 0.7152 + lb * 0.0722) / 1.00000
+    z = (lr * 0.0193 + lg * 0.1192 + lb * 0.9505) / 1.08883
+
+    def _f(t: float) -> float:
+        return t ** (1 / 3) if t > 0.008856 else 7.787 * t + 16 / 116
+
+    fx, fy, fz = _f(x), _f(y), _f(z)
+    return 116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)
+
+
+def _lab_dist_utils(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:
+    return math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b)))
+
+
+def _is_near_white_fill(fill: str) -> bool:
+    """Retourne True si le fill est une couleur quasi-blanche (L* > 92 en Lab)."""
+    names = {'white': (255, 255, 255), 'snow': (255, 250, 250), 'ivory': (255, 255, 240)}
+    if fill.lower() in names:
+        rgb = names[fill.lower()]
+    else:
+        rgb = _hex_to_rgb(fill)
+    if rgb is None:
+        return False
+    L, _, _ = _rgb_to_lab_utils(*rgb)
+    return L > 92.0
+
+
+def remove_background_fill(svg_path: Path) -> int:
+    """
+    Supprime les fills blanc/quasi-blanc (L* > 92) qui couvrent plus de 85% de la surface SVG.
+    Utile pour supprimer les fonds blancs issus de la vectorisation PNG.
+    Retourne le nombre d'éléments supprimés.
+    """
+    _register_svg_namespaces()
+    try:
+        tree = ET.parse(svg_path)
+    except ET.ParseError:
+        return 0
+
+    root = tree.getroot()
+
+    # Résoudre les dimensions : viewBox prioritaire, sinon width/height direct
+    vb_w: float | None = None
+    vb_h: float | None = None
+    vb = root.get('viewBox', '')
+    vb_parts = vb.split() if vb else []
+    if len(vb_parts) == 4:
+        try:
+            vb_w, vb_h = float(vb_parts[2]), float(vb_parts[3])
+        except ValueError:
+            pass
+
+    if vb_w is None or vb_h is None:
+        # Fallback : width/height directs (SVG VTracer sans viewBox)
+        try:
+            w_attr = root.get('width', '')
+            h_attr = root.get('height', '')
+            if w_attr and h_attr:
+                w_mm = _parse_length_mm(w_attr)
+                h_mm = _parse_length_mm(h_attr)
+                if w_mm and h_mm:
+                    vb_w, vb_h = w_mm, h_mm
+        except Exception:
+            pass
+
+    if not vb_w or not vb_h or vb_w <= 0 or vb_h <= 0:
+        return 0
+
+    viewbox_area = vb_w * vb_h
+    ns_path = f'{{{_SVG_NS}}}path'
+    ns_rect = f'{{{_SVG_NS}}}rect'
+    ns_g = f'{{{_SVG_NS}}}g'
+
+    to_remove: list[tuple[ET.Element, ET.Element]] = []
+
+    def _check_element(el: ET.Element, parent: ET.Element) -> None:
+        fill = el.get('fill', '') or ''
+        if not fill or fill in ('none', 'transparent'):
+            return
+        if not _is_near_white_fill(fill):
+            return
+
+        if el.tag in (ns_rect, 'rect'):
+            try:
+                rx = float(el.get('x', vb_x))
+                ry = float(el.get('y', vb_y))
+                rw = float(el.get('width', 0))
+                rh = float(el.get('height', 0))
+                rect_area = rw * rh
+                coverage = rect_area / viewbox_area
+                if coverage > 0.85:
+                    to_remove.append((el, parent))
+            except ValueError:
+                pass
+        elif el.tag in (ns_path, 'path'):
+            d = el.get('d', '')
+            # Ne supprimer que les paths simples (≤ 12 commandes SVG) — rectangles approximatifs.
+            # Les formes complexes (hexagones, étoiles, silhouettes) sont des éléments de design.
+            segment_count = len(re.findall(r'[MmLlHhVvCcSsQqTtAaZz]', d))
+            if segment_count > 12:
+                return
+            nums = [float(m) for m in _COORD_RE.findall(d)]
+            if len(nums) < 4:
+                return
+            xs, ys = nums[0::2], nums[1::2]
+            if not xs or not ys:
+                return
+            bbox_w = max(xs) - min(xs)
+            bbox_h = max(ys) - min(ys)
+            coverage = (bbox_w * bbox_h) / viewbox_area
+            if coverage > 0.85:
+                to_remove.append((el, parent))
+
+    for child in list(root):
+        if child.tag in (ns_g, 'g'):
+            for grandchild in list(child):
+                _check_element(grandchild, child)
+        _check_element(child, root)
+
+    if not to_remove:
+        return 0
+
+    removed = 0
+    for el, parent in to_remove:
+        try:
+            parent.remove(el)
+            removed += 1
+        except ValueError:
+            pass
+
+    if removed:
+        logger.info('[bg] %d fond(s) blanc supprimé(s) dans %s', removed, svg_path.name)
+        tree.write(svg_path, encoding='unicode', xml_declaration=True)
+
+    return removed
+
+
+def force_max_svg_colors(svg_path: Path, max_colors: int = 10) -> int:
+    """
+    Garantit que le SVG n'a pas plus de max_colors couleurs de fill distinctes.
+    Fusionne itérativement les deux couleurs Lab les plus proches jusqu'à atteindre max_colors.
+    Retourne le nombre de couleurs fusionnées (0 si déjà dans la limite).
+    """
+    _register_svg_namespaces()
+    try:
+        tree = ET.parse(svg_path)
+    except ET.ParseError:
+        return 0
+
+    root = tree.getroot()
+    ns_path = f'{{{_SVG_NS}}}path'
+    ns_g = f'{{{_SVG_NS}}}g'
+
+    all_elements = list(root.iter())
+    fill_elements: list[ET.Element] = [
+        el for el in all_elements
+        if el.tag in (ns_path, 'path')
+        and el.get('fill', '') not in ('', 'none', 'transparent')
+        and not el.get('fill', '').startswith('url(')
+    ]
+
+    if not fill_elements:
+        return 0
+
+    fills = [el.get('fill', '') for el in fill_elements]
+    unique_fills = list(dict.fromkeys(fills))
+
+    if len(unique_fills) <= max_colors:
+        return 0
+
+    fill_counts: dict[str, int] = {}
+    for f in fills:
+        fill_counts[f] = fill_counts.get(f, 0) + 1
+
+    fill_to_rgb: dict[str, tuple[int, int, int] | None] = {
+        f: _hex_to_rgb(f) for f in unique_fills
+    }
+    fill_to_lab: dict[str, tuple[float, float, float] | None] = {
+        f: (_rgb_to_lab_utils(*rgb) if rgb else None) for f, rgb in fill_to_rgb.items()
+    }
+
+    current_fills = list(unique_fills)
+    n_merged = 0
+
+    while len(current_fills) > max(max_colors, 1):
+        best_dist = float('inf')
+        best_i, best_j = 0, 1
+
+        for i in range(len(current_fills)):
+            lab_i = fill_to_lab.get(current_fills[i])
+            if lab_i is None:
+                continue
+            for j in range(i + 1, len(current_fills)):
+                lab_j = fill_to_lab.get(current_fills[j])
+                if lab_j is None:
+                    continue
+                d = _lab_dist_utils(lab_i, lab_j)
+                if d < best_dist:
+                    best_dist = d
+                    best_i, best_j = i, j
+
+        fi, fj = current_fills[best_i], current_fills[best_j]
+        # Garder la couleur la plus fréquente, remplacer l'autre
+        if fill_counts.get(fi, 0) >= fill_counts.get(fj, 0):
+            kept, merged = fi, fj
+        else:
+            kept, merged = fj, fi
+
+        fill_counts[kept] = fill_counts.get(kept, 0) + fill_counts.get(merged, 0)
+        fill_counts.pop(merged, None)
+
+        for el in fill_elements:
+            if el.get('fill') == merged:
+                el.set('fill', kept)
+
+        current_fills.remove(merged)
+        n_merged += 1
+
+    if n_merged > 0:
+        logger.info('[colors] %d couleur(s) fusionnées → %d fils max dans %s',
+                    n_merged, len(current_fills), svg_path.name)
+        tree.write(svg_path, encoding='unicode', xml_declaration=True)
+
+    return n_merged
+
+
+def group_paths_by_color(svg_path: Path) -> int:
+    """
+    Regroupe les <path> plats (directs sous root, sortie VTracer) par couleur de fill.
+    Réduit les changements de couleur séquentiels qu'Ink/Stitch interprète comme des fils.
+    Ne touche pas aux SVGs déjà structurés en <g> (sortie potrace).
+    Retourne le nombre de changements de couleur réduits.
+    """
+    _register_svg_namespaces()
+    try:
+        tree = ET.parse(svg_path)
+    except ET.ParseError:
+        return 0
+
+    root = tree.getroot()
+    ns_path = f'{{{_SVG_NS}}}path'
+    ns_g = f'{{{_SVG_NS}}}g'
+
+    # Si le SVG a déjà des <g> (sortie potrace, potrace-snap), skip — déjà structuré par couleur
+    has_color_groups = any(ch.tag in (ns_g, 'g') for ch in root)
+    if has_color_groups:
+        return 0
+
+    flat_paths: list[tuple[ET.Element, str]] = [
+        (ch, ch.get('fill', '') or '')
+        for ch in list(root)
+        if ch.tag in (ns_path, 'path')
+    ]
+
+    if len(flat_paths) <= 1:
+        return 0
+
+    # Ordre d'apparition des couleurs (pour conserver l'ordre relatif des couleurs)
+    seen_colors: list[str] = []
+    for _, fill in flat_paths:
+        key = fill.lower().strip()
+        if key and key not in seen_colors:
+            seen_colors.append(key)
+
+    if len(seen_colors) <= 1:
+        return 0
+
+    changes_before = sum(
+        1 for i in range(1, len(flat_paths)) if flat_paths[i][1] != flat_paths[i - 1][1]
+    )
+
+    by_color: dict[str, list[ET.Element]] = {c: [] for c in seen_colors}
+    ungrouped: list[ET.Element] = []
+
+    for path, fill in flat_paths:
+        key = fill.lower().strip()
+        if key in by_color:
+            by_color[key].append(path)
+        else:
+            ungrouped.append(path)
+
+    for path, _ in flat_paths:
+        try:
+            root.remove(path)
+        except ValueError:
+            pass
+
+    for color in seen_colors:
+        for path in by_color[color]:
+            root.append(path)
+    for path in ungrouped:
+        root.append(path)
+
+    fills_after = [ch.get('fill', '') for ch in root if ch.tag in (ns_path, 'path')]
+    changes_after = sum(
+        1 for i in range(1, len(fills_after)) if fills_after[i] != fills_after[i - 1]
+    )
+
+    reduced = changes_before - changes_after
+    logger.info('[group] %d→%d changements couleur séquentiels dans %s',
+                changes_before + 1, changes_after + 1, svg_path.name)
+    tree.write(svg_path, encoding='unicode', xml_declaration=True)
+    return reduced
+
+
+def normalize_stroke_only_paths(svg_path: Path) -> int:
+    """
+    Convertit les paths stroke-only (fill absent ou 'none', stroke='#rrggbb') en fill='#rrggbb'.
+
+    Ces paths représentent typiquement du texte vectorisé en contours ou des formes avec
+    bordure colorée. Ink/Stitch ignore les paths sans fill — cette conversion les rend brodables.
+    Le stroke est mis à 'none' après la conversion pour éviter les doubles stitches.
+
+    Retourne le nombre de paths modifiés.
+    """
+    _register_svg_namespaces()
+    try:
+        tree = ET.parse(svg_path)
+    except ET.ParseError:
+        return 0
+
+    root = tree.getroot()
+    ns_path = f'{{{_SVG_NS}}}path'
+    modified = 0
+
+    for el in root.iter():
+        if el.tag not in (ns_path, 'path'):
+            continue
+
+        fill = el.get('fill', '').strip().lower()
+        stroke = el.get('stroke', '').strip()
+
+        # Style CSS inline : extraire fill et stroke si définis via style=
+        style_str = el.get('style', '')
+        if style_str:
+            for part in style_str.split(';'):
+                part = part.strip()
+                if ':' in part:
+                    k, _, v = part.partition(':')
+                    k = k.strip().lower()
+                    v = v.strip()
+                    if k == 'fill' and not el.get('fill'):
+                        fill = v.lower()
+                    elif k == 'stroke' and not el.get('stroke'):
+                        stroke = v
+
+        is_fill_none = fill in ('', 'none', 'transparent')
+        is_stroke_color = stroke.startswith('#') and len(stroke) == 7
+
+        if is_fill_none and is_stroke_color:
+            el.set('fill', stroke)
+            el.set('stroke', 'none')
+            # Nettoyer stroke du style CSS si présent
+            if style_str:
+                parts = [p for p in style_str.split(';') if p.strip() and not p.strip().lower().startswith('stroke')]
+                new_style = ';'.join(parts)
+                if new_style:
+                    el.set('style', new_style)
+                elif el.get('style') is not None:
+                    del el.attrib['style']
+            modified += 1
+
+    if modified:
+        tree.write(svg_path, encoding='unicode', xml_declaration=True)
+        logger.info('[stroke-fix] %d paths stroke-only → fill dans %s', modified, svg_path.name)
+
+    return modified
 
 
 def scale_svg_to_width_mm(input_svg: Path, target_width_mm: int) -> Path:

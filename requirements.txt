@@ -1,0 +1,23 @@
+# StitchFlow — dépendances Python
+# pip install -r requirements.txt
+
+# Core Django
+django>=6.0
+python-decouple>=3.8
+dj-database-url>=2.0
+django-vite>=3.0
+
+# Celery + Redis
+celery[redis]>=5.3
+redis>=5.0
+
+# Broderie
+pyembroidery>=1.5
+
+# Images et vectorisation
+pillow>=10.0
+vtracer>=0.6
+pdf2image>=1.17
+
+# Suppression fond IA (optionnel — peut échouer sur certains envs, le pipeline a un fallback Pillow)
+rembg>=2.0

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="500" height="150" viewBox="0 0 500 150">
+  <rect width="500" height="150" fill="#FFFFFF"/>
+  <text x="25" y="108" font-family="Helvetica,Arial,sans-serif" font-size="85" font-weight="bold" fill="#33333344" text-anchor="middle">B</text>
+  <text x="22" y="105" font-family="Helvetica,Arial,sans-serif" font-size="85" font-weight="bold" fill="#E74C3C" stroke="#00000033" stroke-width="1" text-anchor="middle">B</text>
+  <text x="83" y="108" font-family="Helvetica,Arial,sans-serif" font-size="85" font-weight="bold" fill="#33333344" text-anchor="middle">R</text>
+  <text x="80" y="105" font-family="Helvetica,Arial,sans-serif" font-size="85" font-weight="bold" fill="#E67E22" stroke="#00000033" stroke-width="1" text-anchor="middle">R</text>
+  <text x="141" y="108" font-family="Helvetica,Arial,sans-serif" font-size="85" font-weight="bold" fill="#33333344" text-anchor="middle">O</text>
+  <text x="138" y="105" font-family="Helvetica,Arial,sans-serif" font-size="85" font-weight="bold" fill="#F1C40F" stroke="#00000033" stroke-width="1" text-anchor="middle">O</text>
+  <text x="199" y="108" font-family="Helvetica,Arial,sans-serif" font-size="85" font-weight="bold" fill="#33333344" text-anchor="middle">D</text>
+  <text x="196" y="105" font-family="Helvetica,Arial,sans-serif" font-size="85" font-weight="bold" fill="#2ECC71" stroke="#00000033" stroke-width="1" text-anchor="middle">D</text>
+  <text x="257" y="108" font-family="Helvetica,Arial,sans-serif" font-size="85" font-weight="bold" fill="#33333344" text-anchor="middle">E</text>
+  <text x="254" y="105" font-family="Helvetica,Arial,sans-serif" font-size="85" font-weight="bold" fill="#1ABC9C" stroke="#00000033" stroke-width="1" text-anchor="middle">E</text>
+  <text x="315" y="108" font-family="Helvetica,Arial,sans-serif" font-size="85" font-weight="bold" fill="#33333344" text-anchor="middle">R</text>
+  <text x="312" y="105" font-family="Helvetica,Arial,sans-serif" font-size="85" font-weight="bold" fill="#3498DB" stroke="#00000033" stroke-width="1" text-anchor="middle">R</text>
+  <text x="373" y="108" font-family="Helvetica,Arial,sans-serif" font-size="85" font-weight="bold" fill="#33333344" text-anchor="middle">I</text>
+  <text x="370" y="105" font-family="Helvetica,Arial,sans-serif" font-size="85" font-weight="bold" fill="#9B59B6" stroke="#00000033" stroke-width="1" text-anchor="middle">I</text>
+  <text x="431" y="108" font-family="Helvetica,Arial,sans-serif" font-size="85" font-weight="bold" fill="#33333344" text-anchor="middle">E</text>
+  <text x="428" y="105" font-family="Helvetica,Arial,sans-serif" font-size="85" font-weight="bold" fill="#E91E63" stroke="#00000033" stroke-width="1" text-anchor="middle">E</text>
+</svg>

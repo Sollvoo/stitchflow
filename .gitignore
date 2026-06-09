@@ -49,3 +49,6 @@ htmlcov/
 # Binaires vendored (volumineux, télécharger via setup)
 vendor/vtracer
 vendor/vtracer.exe
+
+# Résultats de tests manuels (générés, pas de source)
+tests/results/

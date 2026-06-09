@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="120mm" height="20mm" viewBox="0 0 340 57">
+  <!-- Texte "broderie" en paths fins — test lisibilité petits caractères -->
+  <path d="M10,45 L10,10 Q10,5 15,5 Q20,5 20,10 L20,28 Q20,35 30,35 Q40,35 40,28 L40,20 Q40,13 30,13 Q20,13 20,20"
+        fill="none" stroke="#1A1A1A" stroke-width="3.5"/>
+  <circle cx="65" cy="22" r="10" fill="none" stroke="#1A1A1A" stroke-width="3.5"/>
+  <line x1="55" y1="10" x2="55" y2="45" stroke="#1A1A1A" stroke-width="3.5"/>
+  <path d="M85,35 Q85,45 75,45 Q65,45 65,35 L65,22" fill="none" stroke="#1A1A1A" stroke-width="3.5"/>
+  <path d="M100,45 L100,13 L130,13 Q140,13 140,22 Q140,35 130,35 L100,35"
+        fill="none" stroke="#C0392B" stroke-width="3.5"/>
+  <path d="M155,35 Q155,45 145,45 L155,45 L155,13 Q165,13 165,22 Q165,30 155,30 L148,30"
+        fill="none" stroke="#C0392B" stroke-width="3.5"/>
+  <rect x="175" y="13" width="4" height="32" fill="#2471A3"/>
+  <circle cx="177" cy="7" r="3" fill="#2471A3"/>
+  <path d="M185,13 L185,45 M185,25 Q200,13 215,25 L215,45" fill="none" stroke="#2471A3" stroke-width="3.5"/>
+  <path d="M225,28 Q225,13 238,13 Q250,13 250,28 L250,45 M225,28 Q225,45 238,45 Q250,45 250,28"
+        fill="none" stroke="#1E8449" stroke-width="3.5"/>
+  <!-- Petit texte → test score qualité petites dimensions -->
+</svg>

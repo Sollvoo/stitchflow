@@ -192,6 +192,45 @@ def _flatten_alpha(path: Path) -> Path:
     return Path(tmp.name)
 
 
+_ENTROPY_LOGO_MAX = 60.0   # variance locale ≤ 60 → logo (aplats francs)
+_ENTROPY_PHOTO_MIN = 200.0  # variance locale ≥ 200 → photo (dégradés, bruit)
+
+
+def _compute_local_variance(img: Image.Image, block_size: int = 8) -> float:
+    """Variance moyenne des blocs block_size×block_size en niveaux de gris. Proxy d'entropie locale."""
+    gray = img.convert('L')
+    w, h = gray.size
+    pixels = list(gray.getdata())
+    variances = []
+    for y in range(0, h - block_size + 1, block_size):
+        for x in range(0, w - block_size + 1, block_size):
+            block = [pixels[(y + by) * w + (x + bx)]
+                     for by in range(block_size) for bx in range(block_size)]
+            mean = sum(block) / len(block)
+            variances.append(sum((p - mean) ** 2 for p in block) / len(block))
+    return sum(variances) / len(variances) if variances else 0.0
+
+
+def _detect_image_type(path: Path, n_colors: int) -> str:
+    """
+    Classe l'image en 'logo' (aplats solides) ou 'photo' (dégradés, antialiasing).
+    Utilise la variance locale (blocs 8×8) comme critère principal,
+    getcolors comme fallback sur la zone ambiguë [60, 200].
+    """
+    with Image.open(path) as img:
+        variance = _compute_local_variance(img)
+        if variance <= _ENTROPY_LOGO_MAX:
+            logger.debug('[routing] entropie=%.1f → logo (seuil≤%.0f)', variance, _ENTROPY_LOGO_MAX)
+            return 'logo'
+        if variance >= _ENTROPY_PHOTO_MIN:
+            logger.debug('[routing] entropie=%.1f → photo (seuil≥%.0f)', variance, _ENTROPY_PHOTO_MIN)
+            return 'photo'
+        max_colors = min(200, n_colors * 20)
+        result = 'logo' if img.convert('RGB').getcolors(maxcolors=max_colors) is not None else 'photo'
+        logger.debug('[routing] entropie=%.1f ambiguë → getcolors=%s', variance, result)
+        return result
+
+
 def _find_vtracer_binary() -> str | None:
     """Retourne le chemin du binaire vtracer CLI (vendor/ prioritaire, puis PATH)."""
     if _VTRACER_VENDOR.exists():
@@ -279,7 +318,11 @@ def _vectorize_vtracer_cli(
     Vectorise PNG → SVG via le binaire CLI VTracer (ARM64-safe, sans SIGSEGV Python bindings).
     Retourne True si réussi, False sinon (l'appelant basculera sur potrace).
     """
-    gradient_step = max(16, 256 // max(n_colors, 1))
+    # Paramètres adaptatifs : designs complexes (n_colors > 8) → plus de détails préservés
+    gradient_step = max(8, 256 // max(n_colors, 1))
+    filter_speckle = 2 if n_colors > 8 else 4
+    color_precision = 8 if n_colors > 8 else 6
+    path_precision = 4 if n_colors > 8 else 3
     result = subprocess.run(
         [
             vtracer_bin,
@@ -288,13 +331,13 @@ def _vectorize_vtracer_cli(
             '--colormode', 'color',
             '--hierarchical', 'stacked',
             '--mode', 'spline',
-            '--filter_speckle', '4',
-            '--color_precision', '6',
+            '--filter_speckle', str(filter_speckle),
+            '--color_precision', str(color_precision),
             '--gradient_step', str(gradient_step),
             '--corner_threshold', '60',
             '--segment_length', '4.0',
             '--splice_threshold', '45',
-            '--path_precision', '3',
+            '--path_precision', str(path_precision),
         ],
         capture_output=True,
         timeout=60,
@@ -310,27 +353,61 @@ def _vectorize_vtracer_cli(
     return True
 
 
+def _quantize_to_n_colors(path: Path, n_colors: int) -> Path:
+    """
+    Réduit l'image à exactement n_colors avant vectorisation.
+    Élimine l'antialiasing à la source : un rouge #FF0000 ne génère plus 30 nuances de rose.
+    dither=NONE est critique — Floyd-Steinberg créerait encore plus de pixels de transition.
+    Retourne le path original si l'image a déjà ≤ n_colors couleurs distinctes.
+    """
+    with Image.open(path) as img:
+        rgb = img.convert('RGB')
+        if rgb.getcolors(maxcolors=n_colors) is not None:
+            return path  # déjà ≤ n_colors couleurs, pas de quantification nécessaire
+        quantized = rgb.quantize(n_colors, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.NONE)
+        rgb_back = quantized.convert('RGB')
+        tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+        rgb_back.save(tmp.name, 'PNG')
+        tmp.close()
+    logger.info('[quantize] %s → %d couleurs max (sans dithering)', path.name, n_colors)
+    return Path(tmp.name)
+
+
 def vectorize_to_svg(png_path: Path, n_colors: int = 6) -> Path:
     """
-    Vectorise un PNG en SVG.
-    Pipeline : VTracer CLI binaire → VTracer Python (subprocess isolé) → potrace → Inkscape.
+    Vectorise un PNG en SVG via un routeur logo/photo.
+    Logos (≤ n_colors*20 couleurs distinctes) → potrace (couleurs exactes garanties).
+    Photos/complexes → VTracer CLI → VTracer Python → potrace → Inkscape.
     Retourne le chemin d'un fichier SVG temporaire à supprimer par l'appelant.
     """
     flattened_path = _flatten_alpha(png_path)
     flattened_tmp = flattened_path if flattened_path != png_path else None
+    quantized_tmp: Path | None = None
 
     tmp_svg = tempfile.NamedTemporaryFile(suffix='.svg', delete=False)
     tmp_svg.close()
     svg_path = Path(tmp_svg.name)
 
     try:
-        # 1. VTracer CLI binaire (ARM64-safe, meilleure qualité couleurs)
-        vtracer_bin = _find_vtracer_binary()
-        if vtracer_bin:
-            if _vectorize_vtracer_cli(flattened_path, svg_path, n_colors, vtracer_bin):
-                return svg_path
+        image_type = _detect_image_type(flattened_path, n_colors)
+        logger.info('[routing] %s → %s (n_colors=%d)', png_path.name, image_type, n_colors)
 
-        # 2. VTracer Python via subprocess isolé (évite SIGSEGV ARM64 dans le process principal)
+        if image_type == 'logo':
+            # Logos : potrace en priorité, couleurs extraites pixel par pixel sans quantification.
+            try:
+                return _vectorize_potrace(flattened_path, svg_path, n_colors)
+            except RuntimeError as potrace_err:
+                logger.warning('[routing] potrace échoué pour logo (%s), fallback VTracer.', potrace_err)
+            # Potrace absent ou échoué → cascade VTracer ci-dessous
+
+        # Photos et fallback logos : quantize → VTracer CLI → VTracer Python → potrace → Inkscape
+        quantized_path = _quantize_to_n_colors(flattened_path, n_colors)
+        quantized_tmp = quantized_path if quantized_path != flattened_path else None
+
+        vtracer_bin = _find_vtracer_binary()
+        if vtracer_bin and _vectorize_vtracer_cli(quantized_path, svg_path, n_colors, vtracer_bin):
+            return svg_path
+
         _preexec = None
         if sys.platform != 'win32':
             import resource as _resource
@@ -338,7 +415,7 @@ def vectorize_to_svg(png_path: Path, n_colors: int = 6) -> Path:
                 _resource.setrlimit(_resource.RLIMIT_CORE, (0, 0))
 
         result = subprocess.run(
-            [sys.executable, str(_VTRACER_HELPER), str(flattened_path), str(svg_path), str(n_colors)],
+            [sys.executable, str(_VTRACER_HELPER), str(quantized_path), str(svg_path), str(n_colors)],
             capture_output=True,
             timeout=120,
             preexec_fn=_preexec,
@@ -351,14 +428,12 @@ def vectorize_to_svg(png_path: Path, n_colors: int = 6) -> Path:
         logger.warning("VTracer Python échoué (code %d%s), tentative potrace.", result.returncode,
                        f' : {stderr}' if stderr else '')
 
-        # 3. potrace multi-couleurs (fallback)
         try:
-            return _vectorize_potrace(flattened_path, svg_path, n_colors)
+            return _vectorize_potrace(quantized_path, svg_path, n_colors)
         except RuntimeError as potrace_err:
             logger.warning('potrace échoué (%s), fallback Inkscape.', potrace_err)
 
-        # 4. Inkscape object-trace (dernier recours)
-        return _vectorize_inkscape(flattened_path, svg_path, n_colors)
+        return _vectorize_inkscape(quantized_path, svg_path, n_colors)
 
     except subprocess.TimeoutExpired:
         svg_path.unlink(missing_ok=True)
@@ -366,6 +441,8 @@ def vectorize_to_svg(png_path: Path, n_colors: int = 6) -> Path:
     finally:
         if flattened_tmp:
             flattened_tmp.unlink(missing_ok=True)
+        if quantized_tmp:
+            quantized_tmp.unlink(missing_ok=True)
 
 
 def _vectorize_inkscape(png_path: Path, svg_path: Path, n_colors: int = 6) -> Path:
@@ -636,12 +713,14 @@ def _vectorize_potrace(png_path: Path, svg_path: Path, n_colors: int = 6) -> Pat
                 potrace_svg = tmpdir_path / f'out_{idx}.svg'
                 _color_to_pbm(mask_1bit, pbm_path)
 
+                turdsize = '1' if n_colors > 8 else '2'
+                opttolerance = '0.1' if n_colors > 8 else '0.2'
                 result = subprocess.run(
                     [potrace_bin, '--svg',
                      '--unit', '1',
                      '--alphamax', '0.1',
-                     '--turdsize', '2',
-                     '--opttolerance', '0.2',
+                     '--turdsize', turdsize,
+                     '--opttolerance', opttolerance,
                      '--output', str(potrace_svg), str(pbm_path)],
                     capture_output=True,
                     timeout=30,
@@ -658,7 +737,7 @@ def _vectorize_potrace(png_path: Path, svg_path: Path, n_colors: int = 6) -> Pat
 
         else:
             # Fallback MEDIANCUT : photos, dégradés, images avec nombreuses nuances
-            quantized = rgb.quantize(colors=n_colors + 1, method=Image.Quantize.MEDIANCUT)
+            quantized = rgb.quantize(colors=n_colors + 1, method=Image.Quantize.FASTOCTREE)
             palette = quantized.getpalette()
             counts = Counter(quantized.get_flattened_data())
 
@@ -679,12 +758,14 @@ def _vectorize_potrace(png_path: Path, svg_path: Path, n_colors: int = 6) -> Pat
                 potrace_svg = tmpdir_path / f'out_{color_idx}.svg'
                 _color_to_pbm(mask_1bit, pbm_path)
 
+                turdsize = '1' if n_colors > 8 else '2'
+                opttolerance = '0.1' if n_colors > 8 else '0.2'
                 result = subprocess.run(
                     [potrace_bin, '--svg',
                      '--unit', '1',
                      '--alphamax', '0.1',
-                     '--turdsize', '2',
-                     '--opttolerance', '0.2',
+                     '--turdsize', turdsize,
+                     '--opttolerance', opttolerance,
                      '--output', str(potrace_svg), str(pbm_path)],
                     capture_output=True,
                     timeout=30,
