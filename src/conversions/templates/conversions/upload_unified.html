@@ -54,6 +54,7 @@
           targetWidth: '',
           nColors: 6,
           removeBg: false,
+          excludedColors: [],
 
           detectFormat(file) {
             const t = file.type;
@@ -124,6 +125,7 @@
         @svg-analyzed.window="targetWidth = String($event.detail.width)"
         @png-analyzed.window="nColors = $event.detail.nColors; targetWidth = String($event.detail.width); removeBg = $event.detail.removeBg"
         @pdf-analyzed.window="$event.detail.width && (targetWidth = String($event.detail.width))"
+        @excluded-colors-changed.window="excludedColors = $event.detail.value"
       >
         {% csrf_token %}
 
@@ -190,6 +192,8 @@
 
         <!-- Champs de formulaire (chargés par HTMX) -->
         <div id="form-container"></div>
+
+        <input type="hidden" name="excluded_colors" :value="excludedColors.join(',')">
 
         <button
           type="submit"

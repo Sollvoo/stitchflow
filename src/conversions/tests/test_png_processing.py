@@ -119,7 +119,7 @@ class RemoveBackgroundTest(TestCase):
         mock_rembg = MagicMock()
         mock_rembg.remove.return_value = _make_tiny_png()
         try:
-            with patch.dict('sys.modules', {'rembg': mock_rembg}):
+            with patch.dict('sys.modules', {'rembg': mock_rembg, 'onnxruntime': MagicMock()}):
                 out = remove_background(p)
             mock_rembg.remove.assert_called_once()
             self.assertTrue(out.exists())

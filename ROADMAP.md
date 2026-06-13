@@ -190,42 +190,56 @@ Objectif : éliminer les artefacts les plus courants (sauts excessifs, micro-pat
 
 ---
 
-## Phase 7 — Assistant pré-conversion
+## Phase 7 — Assistant pré-conversion + sélection guidée des couleurs ✅
 
-Objectif : analyser le fichier source AVANT la conversion pour prévenir les problèmes et guider l'utilisateur. Réduire les conversions "Problématique" en informant en amont.
+Objectif : analyser le fichier source AVANT la conversion, prévenir les problèmes, et donner à l'utilisateur un contrôle simple sur ses couleurs de fils. Réduire les conversions ratées en informant et guidant en amont.
 
-- [ ] Analyse SVG source : détection des paths trop petits (< 2mm à la taille cible) — avertissement bloquant
-- [ ] Détection des éléments `<text>` non convertis en paths — suggestion de vectoriser dans l'outil source
-- [ ] Détection du nombre de couleurs excessif (> 10 pour PR1050X) — suggestion de réduction
-- [ ] Détection des zones à densité trop haute (risque de chevauchements de points à la broderie)
-- [ ] Avertissements distincts : bloquants 🔴 (conversion impossible) vs suggestions 🟡 (résultat dégradé)
-- [ ] Affiché dans l'UI via HTMX entre le drop et le bouton "Convertir" — zéro friction
-- [ ] Pour PNG/JPEG : avertissement si image < 300 DPI estimé (flou probable après vectorisation)
+> **Priorité haute** : c'est la fonctionnalité qui différencie StitchFlow des convertisseurs gratuits. Un brodeur qui voit ses fils avant de lancer est un brodeur qui comprend et qui revient.
+
+### 7a — Avertissements intelligents (bloquants et suggestions) ✅
+- [x] Analyse SVG : détection des paths trop petits (< 2mm² à la taille cible) — badge `badge-error`
+- [x] Détection des éléments `<text>` non convertis en paths — badge `badge-warning` "Convertir en courbes dans votre outil source"
+- [x] Détection du nombre de couleurs > 10 — badge `badge-warning` avec le nombre exact
+- [x] Pour PNG/JPEG : avertissement si DPI EXIF < 150 — badge `badge-warning` "Résultat flou probable"
+- [x] Avertissements affichés dans les partials HTMX existants (`png_suggestions.html`, `svg_suggestions.html`)
+
+### 7b — Sélection et aperçu des couleurs avant conversion ✅
+- [x] Après analyse PNG/JPEG/PDF : afficher les N couleurs détectées avec swatches + pourcentage de surface
+- [x] Slider "Nombre de fils" met à jour live les swatches (actifs/grisés) via AlpineJS pur + event `ncolors-changed`
+- [x] Clic sur swatch pour exclure une couleur — les exclues sont grisées + barrées
+- [x] `excluded_colors` transmis dans le POST → stocké dans `conversion_metadata` → appliqué dans `tasks.py` avant `validate_svg_content`
+- [x] Pour SVG direct : afficher les fills uniques comme swatches (exclusion possible)
+- [x] Nouvelle fonction `remove_excluded_colors_from_svg()` dans `svg_utils.py`
+
+### 7c — Résumé "ce que va faire la machine" avant conversion ✅
+- [x] Estimation du nombre de fils, temps de broderie (~600 pts/min), dimensions finales
+- [x] Indicateur brodabilité : 🟢 ≤6 couleurs, pas de texte, pas de petits paths / 🟡 7-10 ou avertissements / 🔴 >10 couleurs
+- [x] Affiché dans `partials/pre_conversion_summary.html` (inclus dans png_suggestions + svg_suggestions)
 
 ---
 
-## Phase 8 — Éditeur SVG intermédiaire (léger)
+## Phase 8 — Correction SVG avant conversion (intervention légère)
 
-Objectif : permettre d'ajuster le SVG vectorisé **avant** d'envoyer à Ink/Stitch, sans bloquer sur un éditeur full-featured. Corriger 80% des cas problématiques en 20% de l'effort d'un éditeur complet.
+Objectif : permettre d'ajuster le SVG vectorisé **après** la vectorisation PNG→SVG mais **avant** Ink/Stitch. Corriger les cas où la vectorisation automatique n'est pas parfaite, sans avoir besoin d'un éditeur complet.
 
-> Approche : SVG natif dans le navigateur + Alpine.js + HTMX. Pas de Fabric.js dans cette phase.
+> Approche : SVG natif dans le navigateur + Alpine.js + HTMX. Pas de bibliothèque JS externe dans cette phase.
 
 ### 8a — Visualisation du SVG intermédiaire
-- [ ] Nouvelle page/partial `conversions/svg_editor.html` affichée après vectorisation PNG→SVG, avant Ink/Stitch
-- [ ] Pipeline modifié : PNG upload → vectorisation → **pause** → validation utilisateur → PES
-- [ ] Affichage SVG inline avec zoom + pan (CSS `transform-origin`)
-- [ ] Option "Convertir directement" pour bypasser l'éditeur (comportement actuel)
+- [ ] Partial `conversions/svg_editor.html` : affichage SVG inline avec zoom + pan (CSS `transform-origin`)
+- [ ] Pipeline modifié : PNG upload → vectorisation → **pause sur le SVG** → validation utilisateur → PES
+- [ ] Option "Convertir directement" pour bypasser et garder le comportement actuel
+- [ ] Affichage comparatif : image source à gauche / SVG vectorisé à droite
 
-### 8b — Ajustement des couleurs
-- [ ] Liste des couleurs détectées dans le SVG avec swatch coloré + compteur de paths
-- [ ] Fusionner deux couleurs proches (drag ou sélection manuelle) → merge des paths SVG côté serveur
-- [ ] Supprimer une couleur entière (retire tous les paths de cette couleur du SVG)
-- [ ] Endpoint HTMX `POST /conversions/<id>/svg/merge-colors/` et `/remove-color/`
+### 8b — Ajustement des couleurs sur le SVG
+- [ ] Liste des couleurs du SVG vectorisé avec swatch + nombre de paths par couleur
+- [ ] Supprimer une couleur entière (retire tous ses paths du SVG)
+- [ ] Fusionner manuellement deux couleurs (glisser une vers l'autre, ou sélection)
+- [ ] Endpoint HTMX `POST /conversions/<id>/svg/remove-color/` et `/merge-colors/`
 
 ### 8c — Validation et relance
-- [ ] Bouton "Valider et convertir en PES" → reprend le pipeline à l'étape Ink/Stitch
-- [ ] Le SVG modifié remplace `vectorized_svg_file` du job, nouveau `ConversionJob` créé pour traçabilité
-- [ ] Prévisualisation live du SVG modifié avant validation
+- [ ] Bouton "Valider et convertir en PES" → reprend le pipeline à l'étape Ink/Stitch uniquement
+- [ ] Le SVG modifié remplace `vectorized_svg_file` du job — même UUID, pas de nouveau job
+- [ ] Prévisualisation live du SVG modifié avant validation (rechargement HTMX du SVG inline)
 
 ---
 

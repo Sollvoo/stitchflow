@@ -1,0 +1,220 @@
+{
+  "run_at": "2026-06-13T12:13:17.539693",
+  "n_tests": 2,
+  "n_ok": 2,
+  "score_mean": 90.0,
+  "results": [
+    {
+      "test_id": "T01",
+      "file": "png/06-logo-monochrome-blanc.png",
+      "format": "png",
+      "params": {
+        "n_colors": 2,
+        "remove_bg": true,
+        "target_width_mm": 80
+      },
+      "score": 80,
+      "score_details": {
+        "threads": {
+          "score": 100,
+          "message": "1 fil(s) — idéal PR1050X (≤7)",
+          "weight": 18,
+          "raw_value": 1,
+          "thresholds": {
+            "ideal": 7,
+            "max_machine": 10,
+            "hard_limit": 15
+          }
+        },
+        "stitches": {
+          "score": 60,
+          "message": "1868 points — design simple",
+          "weight": 18,
+          "raw_value": 1868,
+          "thresholds": {
+            "min_simple": 500,
+            "min_pro": 2000,
+            "max_recommended": 500000
+          }
+        },
+        "dimensions": {
+          "score": 100,
+          "message": "47×24 mm — dans la zone PR1050X",
+          "weight": 14,
+          "raw_value": {
+            "width_mm": 47.0,
+            "height_mm": 24.0
+          },
+          "thresholds": {
+            "max_w": 360,
+            "max_h": 200
+          }
+        },
+        "jumps": {
+          "score": 100,
+          "message": "4 saut(s) (0.2%) — excellent",
+          "weight": 10,
+          "raw_value": {
+            "jump_count": 4,
+            "ratio_pct": 0.21
+          },
+          "thresholds": {
+            "excellent_pct": 0.5,
+            "normal_pct": 2.0,
+            "bad_pct": 8.0
+          }
+        },
+        "density": {
+          "score": 100,
+          "message": "1.7 pts/mm² — densité optimale broderie",
+          "weight": 10,
+          "raw_value": 1.656,
+          "thresholds": {
+            "min": 0.5,
+            "max": 20.0
+          }
+        },
+        "color_fidelity": {
+          "score": 66,
+          "message": "Fidélité correcte (Δ Lab 28.4, 1/1 fil(s))",
+          "weight": 18,
+          "raw_value": null
+        },
+        "coverage": {
+          "score": 50,
+          "message": "1/2 couleurs vectorisées — couverture partielle",
+          "weight": 12,
+          "raw_value": null
+        }
+      },
+      "metadata": {
+        "color_changes": 1,
+        "width_mm": 47.0,
+        "height_mm": 24.0,
+        "stitch_count": 1875,
+        "time_minutes": 3.1,
+        "thread_colors": [
+          {
+            "hex": "#0B3D91",
+            "name": "Ultramarine"
+          }
+        ],
+        "quality_score": 80,
+        "quality_label": "Bon",
+        "quality_color": "info",
+        "jump_count": 4,
+        "jump_ratio": 0.2
+      },
+      "error": null,
+      "duration_s": 2.6
+    },
+    {
+      "test_id": "T08",
+      "file": "svg/01-circle-simple.svg",
+      "format": "svg",
+      "params": {
+        "n_colors": 6,
+        "remove_bg": false,
+        "target_width_mm": 80
+      },
+      "score": 100,
+      "score_details": {
+        "threads": {
+          "score": 100,
+          "message": "2 fil(s) — idéal PR1050X (≤7)",
+          "weight": 18,
+          "raw_value": 2,
+          "thresholds": {
+            "ideal": 7,
+            "max_machine": 10,
+            "hard_limit": 15
+          }
+        },
+        "stitches": {
+          "score": 100,
+          "message": "6,530 points — excellent (design professionnel)",
+          "weight": 18,
+          "raw_value": 6530,
+          "thresholds": {
+            "min_simple": 500,
+            "min_pro": 2000,
+            "max_recommended": 500000
+          }
+        },
+        "dimensions": {
+          "score": 100,
+          "message": "64×64 mm — dans la zone PR1050X",
+          "weight": 14,
+          "raw_value": {
+            "width_mm": 64.0,
+            "height_mm": 64.0
+          },
+          "thresholds": {
+            "max_w": 360,
+            "max_h": 200
+          }
+        },
+        "jumps": {
+          "score": 100,
+          "message": "3 saut(s) (0.0%) — excellent",
+          "weight": 10,
+          "raw_value": {
+            "jump_count": 3,
+            "ratio_pct": 0.05
+          },
+          "thresholds": {
+            "excellent_pct": 0.5,
+            "normal_pct": 2.0,
+            "bad_pct": 8.0
+          }
+        },
+        "density": {
+          "score": 100,
+          "message": "1.6 pts/mm² — densité optimale broderie",
+          "weight": 10,
+          "raw_value": 1.594,
+          "thresholds": {
+            "min": 0.5,
+            "max": 20.0
+          }
+        },
+        "color_fidelity": {
+          "score": 100,
+          "message": "Couleurs fidèles (Δ Lab moyen 0.0, 2/1 fil(s))",
+          "weight": 18,
+          "raw_value": null
+        },
+        "coverage": {
+          "score": 100,
+          "message": "Source vectorielle — couverture non applicable",
+          "weight": 12,
+          "raw_value": null
+        }
+      },
+      "metadata": {
+        "color_changes": 2,
+        "width_mm": 64.0,
+        "height_mm": 64.0,
+        "stitch_count": 6536,
+        "time_minutes": 10.9,
+        "thread_colors": [
+          {
+            "hex": "#0A55A3",
+            "name": "Blue"
+          },
+          {
+            "hex": "#0B3D91",
+            "name": "Ultramarine"
+          }
+        ],
+        "quality_score": 100,
+        "quality_label": "Excellent",
+        "quality_color": "success",
+        "jump_count": 3,
+        "jump_ratio": 0.0
+      },
+      "error": null,
+      "duration_s": 1.5
+    }
+  ]
+}

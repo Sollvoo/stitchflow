@@ -26,6 +26,7 @@
     step="1"
     class="range range-primary range-sm"
     x-model="nColors"
+    @input="$dispatch('ncolors-changed', { value: parseInt(nColors) })"
   />
   <div class="flex justify-between text-xs text-base-content/30 mt-1 px-1">
     <span>2 (simple)</span>

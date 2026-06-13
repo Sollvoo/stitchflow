@@ -30,6 +30,7 @@ def process_conversion_job(self, job_id: str) -> None:
         force_max_svg_colors,
         group_paths_by_color,
         normalize_stroke_only_paths,
+        _count_svg_unique_fills,
     )
     from .services.validation import validate_svg_content, SVGValidationError
 
@@ -137,6 +138,15 @@ def process_conversion_job(self, job_id: str) -> None:
             source_svg_path = input_path
 
         # --- Pipeline SVG→PES commun ---
+        _excl_raw = (job.conversion_metadata or {}).get('excluded_colors', '')
+        if _excl_raw:
+            _excl_hexes = [h.strip() for h in _excl_raw.split(',') if h.strip().startswith('#')]
+            if _excl_hexes:
+                from .services.svg_utils import remove_excluded_colors_from_svg
+                n_excl = remove_excluded_colors_from_svg(source_svg_path, _excl_hexes)
+                if n_excl > 0:
+                    logger.info('[excluded] %d éléments supprimés (%s) pour job %s', n_excl, _excl_hexes, job_id)
+
         validate_svg_content(source_svg_path)
 
         # Fond blanc vectorisé → supprimer seulement pour PNG/JPEG/WebP/PDF (pas SVG direct)
@@ -165,14 +175,21 @@ def process_conversion_job(self, job_id: str) -> None:
         if n_merged > 0:
             logger.info('[colors] %d couleur(s) fusionnées → ≤10 fils pour job %s', n_merged, job_id)
 
+        n_before_snap = _count_svg_unique_fills(svg_to_convert)
         try:
             from .services.thread_color import snap_svg_colors_to_brother_palette
             snap_svg_colors_to_brother_palette(svg_to_convert)
         except Exception as snap_exc:
             logger.warning("Snap couleurs Brother échoué pour job %s : %s", job_id, snap_exc)
 
-        # Regrouper à nouveau après fusion des couleurs (force_max peut avoir mélangé)
+        # reorder : NN spatial intra-groupe ; group_by_color : regroupe par couleur avec NN inter-groupes
         group_paths_by_color(svg_to_convert)
+        n_after_snap = _count_svg_unique_fills(svg_to_convert)
+        if n_after_snap != n_before_snap:
+            logger.info(
+                '[snap] %d couleurs → %d fils effectifs après snap Brother pour job %s',
+                n_before_snap, n_after_snap, job_id,
+            )
 
         # Convertir les paths stroke-only en fill pour garantir que Ink/Stitch les brod
         n_stroke = normalize_stroke_only_paths(svg_to_convert)

@@ -1,0 +1,26 @@
+<div class="mt-3 rounded-xl border border-base-300 bg-base-200/50 p-3 text-sm">
+  <div class="flex items-center gap-2 mb-3">
+    <span class="font-semibold text-base-content/70 text-xs uppercase tracking-wide">Ce que va faire la machine</span>
+    {% if brodability == 'green' %}
+      <span class="badge badge-success badge-sm">Prêt à broder</span>
+    {% elif brodability == 'orange' %}
+      <span class="badge badge-warning badge-sm">Vérifiez les avertissements</span>
+    {% else %}
+      <span class="badge badge-error badge-sm">Attention</span>
+    {% endif %}
+  </div>
+  <div class="grid grid-cols-3 gap-2 text-center">
+    <div>
+      <div class="text-xl font-bold text-primary">{{ estimated_threads }}</div>
+      <div class="text-xs text-base-content/50">fil{{ estimated_threads|pluralize }}</div>
+    </div>
+    <div>
+      <div class="text-sm font-bold leading-tight">{{ final_width_mm }}×{{ final_height_mm }}<span class="text-xs font-normal"> mm</span></div>
+      <div class="text-xs text-base-content/50">dimensions</div>
+    </div>
+    <div>
+      <div class="text-xl font-bold">~{{ estimated_minutes }}</div>
+      <div class="text-xs text-base-content/50">min broderie</div>
+    </div>
+  </div>
+</div>

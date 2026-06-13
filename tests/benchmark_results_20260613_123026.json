@@ -1,0 +1,584 @@
+{
+  "run_at": "2026-06-13T12:30:26.764515",
+  "n_tests": 5,
+  "n_ok": 5,
+  "score_mean": 92.2,
+  "results": [
+    {
+      "test_id": "T01",
+      "file": "png/06-logo-monochrome-blanc.png",
+      "format": "png",
+      "params": {
+        "n_colors": 2,
+        "remove_bg": true,
+        "target_width_mm": 80
+      },
+      "score": 87,
+      "score_details": {
+        "threads": {
+          "score": 100,
+          "message": "1 fil(s) — idéal PR1050X (≤7)",
+          "weight": 18,
+          "raw_value": 1,
+          "thresholds": {
+            "ideal": 7,
+            "max_machine": 10,
+            "hard_limit": 15
+          }
+        },
+        "stitches": {
+          "score": 100,
+          "message": "1,868 points — excellent (design professionnel)",
+          "weight": 18,
+          "raw_value": 1868,
+          "thresholds": {
+            "min_simple": 500,
+            "min_pro": 2000,
+            "max_recommended": 500000
+          }
+        },
+        "dimensions": {
+          "score": 100,
+          "message": "47×24 mm — dans la zone PR1050X",
+          "weight": 14,
+          "raw_value": {
+            "width_mm": 47.0,
+            "height_mm": 24.0
+          },
+          "thresholds": {
+            "max_w": 360,
+            "max_h": 200
+          }
+        },
+        "jumps": {
+          "score": 100,
+          "message": "4 saut(s) (0.2%) — excellent",
+          "weight": 10,
+          "raw_value": {
+            "jump_count": 4,
+            "ratio_pct": 0.21
+          },
+          "thresholds": {
+            "excellent_pct": 0.5,
+            "normal_pct": 2.0,
+            "bad_pct": 8.0
+          }
+        },
+        "density": {
+          "score": 100,
+          "message": "1.7 pts/mm² — densité optimale broderie",
+          "weight": 10,
+          "raw_value": 1.656,
+          "thresholds": {
+            "min": 0.5,
+            "max": 20.0
+          }
+        },
+        "color_fidelity": {
+          "score": 66,
+          "message": "Fidélité correcte (Δ Lab 28.4, 1/1 fil(s))",
+          "weight": 18,
+          "raw_value": null
+        },
+        "coverage": {
+          "score": 50,
+          "message": "1/2 couleurs vectorisées — couverture partielle",
+          "weight": 12,
+          "raw_value": null
+        }
+      },
+      "metadata": {
+        "color_changes": 1,
+        "width_mm": 47.0,
+        "height_mm": 24.0,
+        "stitch_count": 1875,
+        "time_minutes": 3.1,
+        "thread_colors": [
+          {
+            "hex": "#0B3D91",
+            "name": "Ultramarine"
+          }
+        ],
+        "quality_score": 87,
+        "quality_label": "Excellent",
+        "quality_color": "success",
+        "jump_count": 4,
+        "jump_ratio": 0.2
+      },
+      "error": null,
+      "duration_s": 3.0
+    },
+    {
+      "test_id": "T02",
+      "file": "png/03-logo-multicolore.png",
+      "format": "png",
+      "params": {
+        "n_colors": 5,
+        "remove_bg": false,
+        "target_width_mm": 80
+      },
+      "score": 90,
+      "score_details": {
+        "threads": {
+          "score": 100,
+          "message": "4 fil(s) — idéal PR1050X (≤7)",
+          "weight": 18,
+          "raw_value": 4,
+          "thresholds": {
+            "ideal": 7,
+            "max_machine": 10,
+            "hard_limit": 15
+          }
+        },
+        "stitches": {
+          "score": 60,
+          "message": "1369 points — design simple",
+          "weight": 18,
+          "raw_value": 1369,
+          "thresholds": {
+            "min_simple": 500,
+            "min_pro": 2000,
+            "max_recommended": 500000
+          }
+        },
+        "dimensions": {
+          "score": 100,
+          "message": "60×13 mm — dans la zone PR1050X",
+          "weight": 14,
+          "raw_value": {
+            "width_mm": 60.4,
+            "height_mm": 12.6
+          },
+          "thresholds": {
+            "max_w": 360,
+            "max_h": 200
+          }
+        },
+        "jumps": {
+          "score": 100,
+          "message": "5 saut(s) (0.4%) — excellent",
+          "weight": 10,
+          "raw_value": {
+            "jump_count": 5,
+            "ratio_pct": 0.36
+          },
+          "thresholds": {
+            "excellent_pct": 0.5,
+            "normal_pct": 2.0,
+            "bad_pct": 8.0
+          }
+        },
+        "density": {
+          "score": 100,
+          "message": "1.8 pts/mm² — densité optimale broderie",
+          "weight": 10,
+          "raw_value": 1.799,
+          "thresholds": {
+            "min": 0.5,
+            "max": 20.0
+          }
+        },
+        "color_fidelity": {
+          "score": 100,
+          "message": "Couleurs fidèles (Δ Lab moyen 0.0, 4/4 fil(s))",
+          "weight": 18,
+          "raw_value": null
+        },
+        "coverage": {
+          "score": 80,
+          "message": "4/5 couleurs vectorisées — bonne couverture",
+          "weight": 12,
+          "raw_value": null
+        }
+      },
+      "metadata": {
+        "color_changes": 4,
+        "width_mm": 60.4,
+        "height_mm": 12.6,
+        "stitch_count": 1381,
+        "time_minutes": 2.3,
+        "thread_colors": [
+          {
+            "hex": "#FE370F",
+            "name": "Vermilion"
+          },
+          {
+            "hex": "#2F7E20",
+            "name": "Moss Green"
+          },
+          {
+            "hex": "#4E2990",
+            "name": "Purple"
+          },
+          {
+            "hex": "#770176",
+            "name": "Royal Purple"
+          }
+        ],
+        "quality_score": 90,
+        "quality_label": "Excellent",
+        "quality_color": "success",
+        "jump_count": 5,
+        "jump_ratio": 0.4
+      },
+      "error": null,
+      "duration_s": 1.9
+    },
+    {
+      "test_id": "T03",
+      "file": "png/07-ecusson-12couleurs.png",
+      "format": "png",
+      "params": {
+        "n_colors": 10,
+        "remove_bg": false,
+        "target_width_mm": 100
+      },
+      "score": 89,
+      "score_details": {
+        "threads": {
+          "score": 60,
+          "message": "8 fils — dépasse les 7 idéaux, re-enfilage possible",
+          "weight": 18,
+          "raw_value": 8,
+          "thresholds": {
+            "ideal": 7,
+            "max_machine": 10,
+            "hard_limit": 15
+          }
+        },
+        "stitches": {
+          "score": 100,
+          "message": "24,638 points — excellent (design professionnel)",
+          "weight": 18,
+          "raw_value": 24638,
+          "thresholds": {
+            "min_simple": 500,
+            "min_pro": 2000,
+            "max_recommended": 500000
+          }
+        },
+        "dimensions": {
+          "score": 100,
+          "message": "100×100 mm — dans la zone PR1050X",
+          "weight": 14,
+          "raw_value": {
+            "width_mm": 100.0,
+            "height_mm": 100.0
+          },
+          "thresholds": {
+            "max_w": 360,
+            "max_h": 200
+          }
+        },
+        "jumps": {
+          "score": 100,
+          "message": "10 saut(s) (0.0%) — excellent",
+          "weight": 10,
+          "raw_value": {
+            "jump_count": 10,
+            "ratio_pct": 0.04
+          },
+          "thresholds": {
+            "excellent_pct": 0.5,
+            "normal_pct": 2.0,
+            "bad_pct": 8.0
+          }
+        },
+        "density": {
+          "score": 100,
+          "message": "2.5 pts/mm² — densité optimale broderie",
+          "weight": 10,
+          "raw_value": 2.464,
+          "thresholds": {
+            "min": 0.5,
+            "max": 20.0
+          }
+        },
+        "color_fidelity": {
+          "score": 97,
+          "message": "Couleurs fidèles (Δ Lab moyen 2.7, 8/8 fil(s))",
+          "weight": 18,
+          "raw_value": null
+        },
+        "coverage": {
+          "score": 80,
+          "message": "8/10 couleurs vectorisées — bonne couverture",
+          "weight": 12,
+          "raw_value": null
+        }
+      },
+      "metadata": {
+        "color_changes": 8,
+        "width_mm": 100.0,
+        "height_mm": 100.0,
+        "stitch_count": 24664,
+        "time_minutes": 41.1,
+        "thread_colors": [
+          {
+            "hex": "#ED171F",
+            "name": "Red"
+          },
+          {
+            "hex": "#A8DDC4",
+            "name": "Seacrest"
+          },
+          {
+            "hex": "#66BA49",
+            "name": "Leaf Green"
+          },
+          {
+            "hex": "#4E2990",
+            "name": "Purple"
+          },
+          {
+            "hex": "#A8DEEB",
+            "name": "Light Blue"
+          },
+          {
+            "hex": "#D0A660",
+            "name": "Khaki"
+          },
+          {
+            "hex": "#0A55A3",
+            "name": "Blue"
+          },
+          {
+            "hex": "#0B3D91",
+            "name": "Ultramarine"
+          }
+        ],
+        "quality_score": 89,
+        "quality_label": "Excellent",
+        "quality_color": "success",
+        "jump_count": 10,
+        "jump_ratio": 0.0
+      },
+      "error": null,
+      "duration_s": 6.0
+    },
+    {
+      "test_id": "T06",
+      "file": "jpeg/12-logo-formes-simple.jpg",
+      "format": "jpeg",
+      "params": {
+        "n_colors": 6,
+        "remove_bg": false,
+        "target_width_mm": 80
+      },
+      "score": 95,
+      "score_details": {
+        "threads": {
+          "score": 100,
+          "message": "4 fil(s) — idéal PR1050X (≤7)",
+          "weight": 18,
+          "raw_value": 4,
+          "thresholds": {
+            "ideal": 7,
+            "max_machine": 10,
+            "hard_limit": 15
+          }
+        },
+        "stitches": {
+          "score": 100,
+          "message": "6,174 points — excellent (design professionnel)",
+          "weight": 18,
+          "raw_value": 6174,
+          "thresholds": {
+            "min_simple": 500,
+            "min_pro": 2000,
+            "max_recommended": 500000
+          }
+        },
+        "dimensions": {
+          "score": 100,
+          "message": "67×67 mm — dans la zone PR1050X",
+          "weight": 14,
+          "raw_value": {
+            "width_mm": 66.8,
+            "height_mm": 66.6
+          },
+          "thresholds": {
+            "max_w": 360,
+            "max_h": 200
+          }
+        },
+        "jumps": {
+          "score": 100,
+          "message": "5 saut(s) (0.1%) — excellent",
+          "weight": 10,
+          "raw_value": {
+            "jump_count": 5,
+            "ratio_pct": 0.08
+          },
+          "thresholds": {
+            "excellent_pct": 0.5,
+            "normal_pct": 2.0,
+            "bad_pct": 8.0
+          }
+        },
+        "density": {
+          "score": 100,
+          "message": "1.4 pts/mm² — densité optimale broderie",
+          "weight": 10,
+          "raw_value": 1.388,
+          "thresholds": {
+            "min": 0.5,
+            "max": 20.0
+          }
+        },
+        "color_fidelity": {
+          "score": 100,
+          "message": "Couleurs fidèles (Δ Lab moyen 0.0, 4/4 fil(s))",
+          "weight": 18,
+          "raw_value": null
+        },
+        "coverage": {
+          "score": 66,
+          "message": "4/6 couleurs vectorisées — couverture partielle",
+          "weight": 12,
+          "raw_value": null
+        }
+      },
+      "metadata": {
+        "color_changes": 4,
+        "width_mm": 66.8,
+        "height_mm": 66.6,
+        "stitch_count": 6186,
+        "time_minutes": 10.3,
+        "thread_colors": [
+          {
+            "hex": "#ED171F",
+            "name": "Red"
+          },
+          {
+            "hex": "#E8A900",
+            "name": "Deep Gold"
+          },
+          {
+            "hex": "#4E2990",
+            "name": "Purple"
+          },
+          {
+            "hex": "#66BA49",
+            "name": "Leaf Green"
+          }
+        ],
+        "quality_score": 95,
+        "quality_label": "Excellent",
+        "quality_color": "success",
+        "jump_count": 5,
+        "jump_ratio": 0.1
+      },
+      "error": null,
+      "duration_s": 1.5
+    },
+    {
+      "test_id": "T08",
+      "file": "svg/01-circle-simple.svg",
+      "format": "svg",
+      "params": {
+        "n_colors": 6,
+        "remove_bg": false,
+        "target_width_mm": 80
+      },
+      "score": 100,
+      "score_details": {
+        "threads": {
+          "score": 100,
+          "message": "2 fil(s) — idéal PR1050X (≤7)",
+          "weight": 18,
+          "raw_value": 2,
+          "thresholds": {
+            "ideal": 7,
+            "max_machine": 10,
+            "hard_limit": 15
+          }
+        },
+        "stitches": {
+          "score": 100,
+          "message": "6,530 points — excellent (design professionnel)",
+          "weight": 18,
+          "raw_value": 6530,
+          "thresholds": {
+            "min_simple": 500,
+            "min_pro": 2000,
+            "max_recommended": 500000
+          }
+        },
+        "dimensions": {
+          "score": 100,
+          "message": "64×64 mm — dans la zone PR1050X",
+          "weight": 14,
+          "raw_value": {
+            "width_mm": 64.0,
+            "height_mm": 64.0
+          },
+          "thresholds": {
+            "max_w": 360,
+            "max_h": 200
+          }
+        },
+        "jumps": {
+          "score": 100,
+          "message": "3 saut(s) (0.0%) — excellent",
+          "weight": 10,
+          "raw_value": {
+            "jump_count": 3,
+            "ratio_pct": 0.05
+          },
+          "thresholds": {
+            "excellent_pct": 0.5,
+            "normal_pct": 2.0,
+            "bad_pct": 8.0
+          }
+        },
+        "density": {
+          "score": 100,
+          "message": "1.6 pts/mm² — densité optimale broderie",
+          "weight": 10,
+          "raw_value": 1.594,
+          "thresholds": {
+            "min": 0.5,
+            "max": 20.0
+          }
+        },
+        "color_fidelity": {
+          "score": 100,
+          "message": "Couleurs fidèles (Δ Lab moyen 0.0, 2/1 fil(s))",
+          "weight": 18,
+          "raw_value": null
+        },
+        "coverage": {
+          "score": 100,
+          "message": "Source vectorielle — couverture non applicable",
+          "weight": 12,
+          "raw_value": null
+        }
+      },
+      "metadata": {
+        "color_changes": 2,
+        "width_mm": 64.0,
+        "height_mm": 64.0,
+        "stitch_count": 6536,
+        "time_minutes": 10.9,
+        "thread_colors": [
+          {
+            "hex": "#0A55A3",
+            "name": "Blue"
+          },
+          {
+            "hex": "#0B3D91",
+            "name": "Ultramarine"
+          }
+        ],
+        "quality_score": 100,
+        "quality_label": "Excellent",
+        "quality_color": "success",
+        "jump_count": 3,
+        "jump_ratio": 0.0
+      },
+      "error": null,
+      "duration_s": 1.0
+    }
+  ]
+}

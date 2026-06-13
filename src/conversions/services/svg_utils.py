@@ -103,6 +103,18 @@ def _path_centroid(d: str) -> tuple[float, float] | None:
     return (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
 
 
+def _path_bbox_area(d: str) -> float:
+    """Aire du bounding box des coordonnées d'un attribut d SVG."""
+    nums = [float(m) for m in _COORD_RE.findall(d or '')]
+    if len(nums) < 4:
+        return 0.0
+    xs = nums[0::2]
+    ys = nums[1::2]
+    if not xs or not ys:
+        return 0.0
+    return (max(xs) - min(xs)) * (max(ys) - min(ys))
+
+
 def _greedy_nn(items: list, centroid_fn) -> list:
     """Greedy nearest-neighbor depuis (0, 0). Retourne items réordonnés."""
     if len(items) <= 1:
@@ -471,9 +483,10 @@ def force_max_svg_colors(svg_path: Path, max_colors: int = 10) -> int:
     if len(unique_fills) <= max_colors:
         return 0
 
-    fill_counts: dict[str, int] = {}
-    for f in fills:
-        fill_counts[f] = fill_counts.get(f, 0) + 1
+    fill_surface_area: dict[str, float] = {}
+    for el in fill_elements:
+        f = el.get('fill', '')
+        fill_surface_area[f] = fill_surface_area.get(f, 0.0) + _path_bbox_area(el.get('d', ''))
 
     fill_to_rgb: dict[str, tuple[int, int, int] | None] = {
         f: _hex_to_rgb(f) for f in unique_fills
@@ -484,6 +497,44 @@ def force_max_svg_colors(svg_path: Path, max_colors: int = 10) -> int:
 
     current_fills = list(unique_fills)
     n_merged = 0
+
+    # Pré-pass : éliminer les couleurs parasites (< 1% de la surface du viewBox)
+    # avant la fusion itérative, pour éviter qu'elles ne contaminent les grandes zones.
+    viewbox_parts = root.get('viewBox', '').split()
+    total_area = 0.0
+    if len(viewbox_parts) == 4:
+        try:
+            total_area = float(viewbox_parts[2]) * float(viewbox_parts[3])
+        except ValueError:
+            pass
+    dust_threshold = total_area * 0.01
+
+    if dust_threshold > 0:
+        for dust_f in list(current_fills):
+            if fill_surface_area.get(dust_f, 0.0) >= dust_threshold:
+                continue
+            dust_lab = fill_to_lab.get(dust_f)
+            if dust_lab is None:
+                continue
+            best_dist, best_target = float('inf'), None
+            for other_f in current_fills:
+                if other_f == dust_f:
+                    continue
+                other_lab = fill_to_lab.get(other_f)
+                if other_lab is None:
+                    continue
+                d = _lab_dist_utils(dust_lab, other_lab)
+                if d < best_dist:
+                    best_dist, best_target = d, other_f
+            if best_target is None:
+                continue
+            fill_surface_area[best_target] = fill_surface_area.get(best_target, 0.0) + fill_surface_area.get(dust_f, 0.0)
+            fill_surface_area.pop(dust_f, None)
+            for el in fill_elements:
+                if el.get('fill') == dust_f:
+                    el.set('fill', best_target)
+            current_fills.remove(dust_f)
+            n_merged += 1
 
     while len(current_fills) > max(max_colors, 1):
         best_dist = float('inf')
@@ -503,14 +554,14 @@ def force_max_svg_colors(svg_path: Path, max_colors: int = 10) -> int:
                     best_i, best_j = i, j
 
         fi, fj = current_fills[best_i], current_fills[best_j]
-        # Garder la couleur la plus fréquente, remplacer l'autre
-        if fill_counts.get(fi, 0) >= fill_counts.get(fj, 0):
+        # Garder la couleur qui couvre le plus de surface, remplacer l'autre
+        if fill_surface_area.get(fi, 0.0) >= fill_surface_area.get(fj, 0.0):
             kept, merged = fi, fj
         else:
             kept, merged = fj, fi
 
-        fill_counts[kept] = fill_counts.get(kept, 0) + fill_counts.get(merged, 0)
-        fill_counts.pop(merged, None)
+        fill_surface_area[kept] = fill_surface_area.get(kept, 0.0) + fill_surface_area.get(merged, 0.0)
+        fill_surface_area.pop(merged, None)
 
         for el in fill_elements:
             if el.get('fill') == merged:
@@ -582,6 +633,17 @@ def group_paths_by_color(svg_path: Path) -> int:
         else:
             ungrouped.append(path)
 
+    # Réordonner les groupes couleur par centroïde NN pour minimiser les sauts entre fils
+    def _color_group_centroid(color: str) -> tuple[float, float] | None:
+        paths = by_color.get(color, [])
+        cs = [_path_centroid(p.get('d', '')) for p in paths]
+        valid = [c for c in cs if c is not None]
+        if not valid:
+            return None
+        return sum(c[0] for c in valid) / len(valid), sum(c[1] for c in valid) / len(valid)
+
+    seen_colors = _greedy_nn(seen_colors, _color_group_centroid)
+
     for path, _ in flat_paths:
         try:
             root.remove(path)
@@ -606,6 +668,18 @@ def group_paths_by_color(svg_path: Path) -> int:
     return reduced
 
 
+def _count_svg_unique_fills(svg_path: Path) -> int:
+    try:
+        root = ET.parse(svg_path).getroot()
+        return len({
+            el.get('fill', '') for el in root.iter()
+            if el.get('fill', '') not in ('', 'none', 'transparent')
+            and not el.get('fill', '').startswith('url(')
+        })
+    except Exception:
+        return 0
+
+
 def normalize_stroke_only_paths(svg_path: Path) -> int:
     """
     Convertit les paths stroke-only (fill absent ou 'none', stroke='#rrggbb') en fill='#rrggbb'.
@@ -625,6 +699,22 @@ def normalize_stroke_only_paths(svg_path: Path) -> int:
     root = tree.getroot()
     ns_path = f'{{{_SVG_NS}}}path'
     modified = 0
+
+    # Ratio unités SVG / mm pour évaluer l'épaisseur réelle du trait
+    _svg_units_per_mm = 1.0
+    width_attr = root.get('width', '')
+    viewbox_attr = root.get('viewBox', '')
+    if width_attr.endswith('mm') and viewbox_attr:
+        try:
+            vb_parts = viewbox_attr.split()
+            if len(vb_parts) == 4:
+                vb_w = float(vb_parts[2])
+                target_mm = float(width_attr[:-2])
+                if target_mm > 0:
+                    _svg_units_per_mm = vb_w / target_mm
+        except (ValueError, ZeroDivisionError):
+            pass
+    _MIN_STROKE_MM = 1.0
 
     for el in root.iter():
         if el.tag not in (ns_path, 'path'):
@@ -651,6 +741,18 @@ def normalize_stroke_only_paths(svg_path: Path) -> int:
         is_stroke_color = stroke.startswith('#') and len(stroke) == 7
 
         if is_fill_none and is_stroke_color:
+            try:
+                sw_svg = float(el.get('stroke-width', '1').strip())
+            except ValueError:
+                sw_svg = 1.0
+            sw_mm = sw_svg / _svg_units_per_mm
+            if sw_mm < _MIN_STROKE_MM:
+                logger.debug(
+                    '[stroke-fix] stroke-width %.2fmm < 1mm — conservé comme stroke pour job %s',
+                    sw_mm, svg_path.name,
+                )
+                continue
+
             el.set('fill', stroke)
             el.set('stroke', 'none')
             # Nettoyer stroke du style CSS si présent
@@ -717,3 +819,32 @@ def scale_svg_to_width_mm(input_svg: Path, target_width_mm: int) -> Path:
     tmp.close()
     tree.write(tmp.name, encoding='unicode', xml_declaration=True)
     return Path(tmp.name)
+
+
+def remove_excluded_colors_from_svg(svg_path: Path, excluded_hexes: list[str]) -> int:
+    """
+    Supprime tous les éléments SVG dont le fill correspond à l'une des couleurs exclues.
+    Retourne le nombre d'éléments supprimés.
+    """
+    _register_svg_namespaces()
+    try:
+        tree = ET.parse(svg_path)
+    except ET.ParseError:
+        return 0
+
+    root = tree.getroot()
+    excluded_lower = {h.lower() for h in excluded_hexes}
+    removed = 0
+
+    for parent in root.iter():
+        for child in list(parent):
+            fill = child.get('fill', '').strip().lower()
+            if fill in excluded_lower:
+                parent.remove(child)
+                removed += 1
+
+    if removed:
+        tree.write(svg_path, encoding='unicode', xml_declaration=True)
+        logger.info('[excluded] %d éléments couleur exclue supprimés dans %s', removed, svg_path.name)
+
+    return removed

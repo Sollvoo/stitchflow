@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pyembroidery
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 logger = logging.getLogger(__name__)
 
@@ -185,10 +185,15 @@ def _score_vectorization_coverage(
     if n_obtained == 0:
         return 0, 'SVG sans couleur — vectorisation échouée ou image blanche'
 
-    ratio = n_obtained / max(1, n_colors_requested)
-    score = min(100, int(ratio * 100))
+    ratio = min(n_obtained, n_colors_requested) / max(n_obtained, n_colors_requested)
+    score = int(ratio * 100)
+    # Plancher à 40 : une vectorisation qui produit au moins 1 couleur n'est pas un échec total,
+    # même si l'image avait naturellement moins de couleurs que demandé.
+    score = max(score, 40)
 
-    if score >= 80:
+    if n_obtained == n_colors_requested:
+        msg = f'{n_obtained}/{n_colors_requested} couleurs vectorisées — couverture exacte'
+    elif score >= 75:
         msg = f'{n_obtained}/{n_colors_requested} couleurs vectorisées — bonne couverture'
     elif score >= 50:
         msg = f'{n_obtained}/{n_colors_requested} couleurs vectorisées — couverture partielle'
@@ -259,7 +264,7 @@ def _compute_quality_score(
     elif stitch_count < 500:
         s_score = 20
         s_msg = f'{stitch_count} points — design très pauvre'
-    elif stitch_count < 2000:
+    elif stitch_count < 1500:
         s_score = 60
         s_msg = f'{stitch_count} points — design simple'
     elif stitch_count <= 50000:
@@ -316,16 +321,16 @@ def _compute_quality_score(
     if width_mm > 0 and height_mm > 0:
         area = width_mm * height_mm
         density = stitch_count / area if area > 0 else 0.0
-        if 1.0 <= density <= 20:
+        if 0.5 <= density <= 20:
             dens_score = 100
             dens_msg = f'{density:.1f} pts/mm² — densité optimale broderie'
-        elif 0.3 <= density < 1.0:
-            dens_score = 70
+        elif 0.2 <= density < 0.5:
+            dens_score = 75
             dens_msg = f'{density:.2f} pts/mm² — densité légère (contours/outlines)'
         elif 20 < density <= 50:
             dens_score = 65
             dens_msg = f'{density:.0f} pts/mm² — remplissage dense (fill stitch normal)'
-        elif density < 0.3:
+        elif density < 0.2:
             dens_score = 20
             dens_msg = f'{density:.3f} pts/mm² — design presque vide'
         else:
@@ -335,6 +340,13 @@ def _compute_quality_score(
         density = 0.0
         dens_score = 50
         dens_msg = 'Densité non calculable'
+
+    # Correction density-aware pour designs compacts (textes, contours fins, petits logos) :
+    # stitch_count < 500 → normalement s_score=20 "très pauvre", mais si density >= 0.2 pts/mm²
+    # la faiblesse vient de la taille du design, pas d'un défaut de conversion.
+    if s_score == 20 and density >= 0.2:
+        s_score = 60
+        s_msg = f'{stitch_count} points — design compact (densité {density:.2f} pts/mm²)'
 
     # 6. Fidélité couleurs SVG→PES (18%)
     if source_svg_path and source_svg_path.exists():
@@ -373,7 +385,7 @@ def _compute_quality_score(
         'density': {
             'score': dens_score, 'message': dens_msg, 'weight': 10,
             'raw_value': round(density, 3),
-            'thresholds': {'min': 1.0, 'max': 20.0},
+            'thresholds': {'min': 0.5, 'max': 20.0},
         },
         'color_fidelity': {
             'score': c_score, 'message': c_msg, 'weight': 18,
@@ -393,7 +405,10 @@ def _compute_quality_score(
     if n_colors_requested is None:
         essential_min = s_score
     else:
-        essential_min = min(s_score, c_score, cov_score)
+        # cov_score n'active plus le gate : un logo monochrome uploadé avec n_colors=6 (défaut)
+        # vectorise légitimement 1 couleur → ratio 1/6 ne doit pas pénaliser brutalement.
+        # La couverture pèse quand même 12% dans le score pondéré.
+        essential_min = min(s_score, c_score)
     if essential_min < 20:
         total = min(raw, 40)
     elif essential_min < 40:
@@ -469,13 +484,27 @@ def generate_pes_preview(pes_path: Path, output_dir: Path) -> Path | None:
         if width <= 0 or height <= 0:
             return None
 
+        # Dimensions finales (inchangées vs avant)
         MAX_DIM = 1200
+        # Rendu interne à 2× pour obtenir l'anti-aliasing via downsample LANCZOS
+        RENDER_SCALE = 2
+        # Fond crème/lin — simule un tissu blanc photographié sous lumière naturelle
+        FABRIC_COLOR = (245, 240, 232)
+        # Flou léger avant downsample pour simuler le relief arrondi du fil
+        BLUR_RADIUS = 0.8
+
         scale = min(MAX_DIM / width, MAX_DIM / height, 1.0)
         img_w = max(1, int(width * scale))
         img_h = max(1, int(height * scale))
-        line_w = max(1, round(3 * scale)) if scale < 1.0 else 3
 
-        img = Image.new('RGB', (img_w, img_h), color=(255, 255, 255))
+        # Canvas de rendu 2× — chaque stitch est dessiné plus épais, puis réduit
+        render_scale = scale * RENDER_SCALE
+        render_w = img_w * RENDER_SCALE
+        render_h = img_h * RENDER_SCALE
+        # 6px à 2× → ~3px après downsample, avec bords anti-aliasés
+        line_w = max(2, round(6 * scale)) if scale < 1.0 else 6
+
+        img = Image.new('RGB', (render_w, render_h), color=FABRIC_COLOR)
         draw = ImageDraw.Draw(img)
 
         def _thread_color(idx: int) -> tuple[int, int, int]:
@@ -490,8 +519,8 @@ def generate_pes_preview(pes_path: Path, output_dir: Path) -> Path | None:
 
         for stitch in pattern.stitches:
             x, y, cmd = stitch[0], stitch[1], stitch[2] & 0xFF
-            sx = int((x - min_x) * scale)
-            sy = int((y - min_y) * scale)
+            sx = int((x - min_x) * render_scale)
+            sy = int((y - min_y) * render_scale)
 
             if cmd == pyembroidery.STITCH:
                 if last_x is not None:
@@ -504,6 +533,11 @@ def generate_pes_preview(pes_path: Path, output_dir: Path) -> Path | None:
             else:
                 # JUMP, TRIM, END et toutes autres commandes : reset sans dessiner
                 last_x = last_y = None
+
+        # Léger blur pour arrondir les bords du fil (simuler l'épaisseur réelle du fil)
+        img = img.filter(ImageFilter.GaussianBlur(radius=BLUR_RADIUS))
+        # Downsample LANCZOS → anti-aliasing naturel des lignes
+        img = img.resize((img_w, img_h), Image.LANCZOS)
 
         output_dir.mkdir(parents=True, exist_ok=True)
         preview_path = output_dir / (pes_path.stem + '_preview.png')

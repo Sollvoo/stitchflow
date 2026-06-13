@@ -1,3 +1,5 @@
+import json
+import tempfile
 from collections import Counter
 from pathlib import Path
 
@@ -40,6 +42,10 @@ class UnifiedUploadView(View):
         form = form_class(request.POST, request.FILES)
         if form.is_valid():
             job = self._save_job(form)
+            excluded_colors_raw = request.POST.get('excluded_colors', '').strip()
+            if excluded_colors_raw:
+                job.conversion_metadata = {'excluded_colors': excluded_colors_raw}
+                job.save(update_fields=['conversion_metadata'])
             process_conversion_job.delay(str(job.id))
             messages.success(request, 'Fichier reçu. La conversion est en cours.')
             return redirect(reverse('conversions:detail', kwargs={'pk': job.id}))
@@ -265,37 +271,99 @@ def _suggest_width_from_svg(root) -> int:
 
 
 class AnalyzeSVGView(View):
-    """Analyse un SVG uploadé et retourne un fragment HTMX avec suggestion de largeur."""
+    """Analyse un SVG uploadé et retourne un fragment HTMX avec suggestions et avertissements."""
 
-    def post(self, request):
+    def post(self, request: HttpRequest) -> HttpResponse:
         file = request.FILES.get('original_file')
         if not file:
             return HttpResponse('', content_type='text/html')
 
         try:
             import xml.etree.ElementTree as ET
+            from .services.svg_utils import (
+                get_svg_dimensions_mm,
+                _count_svg_unique_fills,
+                _path_bbox_area,
+            )
+
             content = file.read(512 * 1024).decode('utf-8', errors='ignore')
             root = ET.fromstring(content)
             suggested_width = _suggest_width_from_svg(root)
+
+            tmp_svg = Path(tempfile.mktemp(suffix='.svg'))
+            tmp_svg.write_text(content, encoding='utf-8')
+            try:
+                width_mm, height_mm = get_svg_dimensions_mm(tmp_svg)
+                n_unique_colors = _count_svg_unique_fills(tmp_svg)
+            finally:
+                tmp_svg.unlink(missing_ok=True)
+
+            _NS_PATH = '{http://www.w3.org/2000/svg}path'
+            _NS_TEXT = '{http://www.w3.org/2000/svg}text'
+
+            vb_parts = root.get('viewBox', '').split()
+            if len(vb_parts) == 4 and width_mm and height_mm:
+                scale_mm2 = (width_mm / float(vb_parts[2])) * (height_mm / float(vb_parts[3]))
+            else:
+                scale_mm2 = (25.4 / 96) ** 2
+
+            small_paths_count = sum(
+                1 for el in root.iter()
+                if el.tag in (_NS_PATH, 'path') and 0 < _path_bbox_area(el.get('d', '')) * scale_mm2 < 2.0
+            )
+            has_text = any(el.tag in (_NS_TEXT, 'text') for el in root.iter())
+
+            unique_fills = sorted({
+                el.get('fill', '') for el in root.iter()
+                if el.get('fill', '') not in ('', 'none', 'transparent')
+                and not el.get('fill', '').startswith('url(')
+            })
+
+            estimated_threads = min(n_unique_colors, 10)
+            final_width_mm = suggested_width
+            if width_mm and height_mm and width_mm > 0:
+                final_height_mm = round(height_mm / width_mm * suggested_width)
+            else:
+                final_height_mm = suggested_width
+            estimated_minutes = max(1, round(
+                (final_width_mm * final_height_mm * 0.4 * max(estimated_threads, 1) * 0.7) / 600
+            ))
+
+            if n_unique_colors > 10:
+                brodability = 'red'
+            elif n_unique_colors > 6 or has_text or small_paths_count > 0:
+                brodability = 'orange'
+            else:
+                brodability = 'green'
+
         except Exception:
             return HttpResponse('', content_type='text/html')
 
         return render(request, 'conversions/partials/svg_suggestions.html', {
             'suggested_width': suggested_width,
+            'small_paths_count': small_paths_count,
+            'has_text': has_text,
+            'n_unique_colors': n_unique_colors,
+            'unique_fills': unique_fills,
+            'color_swatches_json': json.dumps([{'hex': h} for h in unique_fills]),
+            'estimated_threads': estimated_threads,
+            'final_width_mm': final_width_mm,
+            'final_height_mm': final_height_mm,
+            'estimated_minutes': estimated_minutes,
+            'brodability': brodability,
         })
 
 
 class AnalyzePNGView(View):
     """Analyse rapide d'un PNG et retourne un fragment HTMX avec suggestions de paramètres."""
 
-    def post(self, request):
+    def post(self, request: HttpRequest) -> HttpResponse:
         file = request.FILES.get('original_file')
         if not file:
             return HttpResponse('', content_type='text/html')
 
         try:
             with Image.open(file) as img:
-                # Conserver RGBA pour détecter les fonds transparents
                 has_transparent_bg = False
                 if img.mode in ('RGBA', 'LA', 'PA'):
                     alpha = list(img.convert('RGBA').get_flattened_data(3))
@@ -303,7 +371,8 @@ class AnalyzePNGView(View):
                     has_transparent_bg = transparent_pixels / len(alpha) > 0.10
 
                 rgb = img.convert('RGB')
-                total_pixels = rgb.width * rgb.height
+                img_w, img_h = rgb.width, rgb.height
+                total_pixels = img_w * img_h
 
                 # Quantize à 32 couleurs — plus de granularité que 12
                 # pour ne pas fusionner prématurément les couleurs distinctes
@@ -316,7 +385,8 @@ class AnalyzePNGView(View):
                 _MIN_RATIO = 0.005
                 near_white_pixels = 0
                 significant_colors = 0
-                for idx, count in counts.items():
+                color_swatches: list[dict] = []
+                for idx, count in sorted(counts.items(), key=lambda x: -x[1]):
                     r = palette[idx * 3]
                     g = palette[idx * 3 + 1]
                     b = palette[idx * 3 + 2]
@@ -325,6 +395,10 @@ class AnalyzePNGView(View):
                         near_white_pixels += count
                     elif count / total_pixels >= _MIN_RATIO:
                         significant_colors += 1
+                        color_swatches.append({
+                            'hex': f'#{r:02x}{g:02x}{b:02x}',
+                            'pct': round(count / total_pixels * 100, 1),
+                        })
 
                 has_white_background = (
                     near_white_pixels / total_pixels > 0.55 or has_transparent_bg
@@ -336,14 +410,36 @@ class AnalyzePNGView(View):
                 # Largeur : DPI EXIF si disponible, sinon heuristique pixel
                 dpi_info = img.info.get('dpi') or img.info.get('jfif_density')
                 if dpi_info and isinstance(dpi_info, (tuple, list)) and dpi_info[0] > 0:
-                    suggested_width = round(rgb.width / dpi_info[0] * 25.4)
+                    suggested_width = round(img_w / dpi_info[0] * 25.4)
                     suggested_width = max(30, min(360, suggested_width))
-                elif rgb.width >= 600:
+                    low_dpi_warning = dpi_info[0] < 150
+                    dpi_value: int | None = round(dpi_info[0])
+                elif img_w >= 600:
                     suggested_width = 120
-                elif rgb.width <= 200:
+                    low_dpi_warning = False
+                    dpi_value = None
+                elif img_w <= 200:
                     suggested_width = 50
+                    low_dpi_warning = False
+                    dpi_value = None
                 else:
                     suggested_width = 80
+                    low_dpi_warning = False
+                    dpi_value = None
+
+            estimated_threads = min(n_colors, significant_colors)
+            final_height_mm = round(suggested_width * img_h / img_w) if img_w > 0 else suggested_width
+            estimated_minutes = max(1, round(
+                (suggested_width * final_height_mm * 0.4 * max(estimated_threads, 1) * 0.7) / 600
+            ))
+
+            if significant_colors > 10:
+                brodability = 'red'
+            elif n_colors > 6 or low_dpi_warning:
+                brodability = 'orange'
+            else:
+                brodability = 'green'
+
         except Exception:
             return HttpResponse('', content_type='text/html')
 
@@ -353,6 +449,14 @@ class AnalyzePNGView(View):
             'total_significant': significant_colors,
             'suggested_width': suggested_width,
             'capped': capped,
+            'low_dpi_warning': low_dpi_warning,
+            'dpi_value': dpi_value,
+            'color_swatches_json': json.dumps(color_swatches),
+            'estimated_threads': estimated_threads,
+            'final_width_mm': suggested_width,
+            'final_height_mm': final_height_mm,
+            'estimated_minutes': estimated_minutes,
+            'brodability': brodability,
         })
 
 

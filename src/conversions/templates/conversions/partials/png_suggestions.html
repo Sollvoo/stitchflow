@@ -1,14 +1,62 @@
 <div id="png-suggestions"
-     class="{% if capped %}alert alert-warning{% else %}alert alert-info{% endif %} py-3 px-4 text-sm gap-2 mt-2"
+     x-data="{
+       colors: {{ color_swatches_json|safe }},
+       maxColors: {{ n_colors }},
+       excludedColors: [],
+       toggleExclude(hex) {
+         if (this.excludedColors.includes(hex))
+           this.excludedColors = this.excludedColors.filter(c => c !== hex);
+         else
+           this.excludedColors.push(hex);
+         $dispatch('excluded-colors-changed', { value: this.excludedColors });
+       }
+     }"
+     @ncolors-changed.window="maxColors = $event.detail.value"
      x-init="$dispatch('png-analyzed', { nColors: {{ n_colors }}, width: {{ suggested_width }}, removeBg: {{ has_white_background|yesno:'true,false' }} })">
-  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-  </svg>
-  <div>
-    <span class="font-medium">Analyse automatique</span> —
-    <strong>{{ n_colors }} couleur{{ n_colors|pluralize }}</strong> détectée{{ n_colors|pluralize }}{% if capped %} <span class="badge badge-warning badge-sm">limite 16 atteinte — vérifiez</span>{% endif %},
-    largeur <strong>{{ suggested_width }} mm</strong>,
-    suppression fond : <strong>{% if has_white_background %}activée (fond détecté){% else %}désactivée{% endif %}</strong>.
-    Paramètres appliqués — modifiez-les si besoin.
+
+  {% if low_dpi_warning %}
+  <div role="alert" class="alert alert-warning py-2 px-3 text-xs gap-2 mt-2">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+    </svg>
+    <span>Résolution <strong>{{ dpi_value }} DPI</strong> — résultat flou probable, utilisez une image ≥ 300 DPI</span>
   </div>
+  {% endif %}
+
+  <div class="{% if capped %}alert alert-warning{% else %}alert alert-info{% endif %} py-3 px-4 text-sm gap-2 mt-2">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+    <div>
+      <span class="font-medium">Analyse automatique</span> —
+      <strong>{{ n_colors }} couleur{{ n_colors|pluralize }}</strong> détectée{{ n_colors|pluralize }}{% if capped %} <span class="badge badge-warning badge-sm">limite 16 atteinte — vérifiez</span>{% endif %},
+      largeur <strong>{{ suggested_width }} mm</strong>,
+      suppression fond : <strong>{% if has_white_background %}activée (fond détecté){% else %}désactivée{% endif %}</strong>.
+      Paramètres appliqués — modifiez-les si besoin.
+    </div>
+  </div>
+
+  <div x-show="colors.length > 0" class="mt-3">
+    <p class="text-xs font-medium text-base-content/60 mb-2">Aperçu des couleurs — cliquez pour exclure</p>
+    <div class="flex flex-wrap gap-2">
+      <template x-for="(color, index) in colors" :key="color.hex">
+        <button
+          type="button"
+          class="w-7 h-7 rounded-full border-2 transition-all duration-150 tooltip"
+          :data-tip="color.hex + ' · ' + color.pct + '%'"
+          :class="index < maxColors && !excludedColors.includes(color.hex)
+            ? 'border-base-300 opacity-100 scale-100'
+            : 'border-dashed border-base-300 opacity-30 grayscale scale-90'"
+          :style="'background-color:' + color.hex"
+          @click="toggleExclude(color.hex)">
+        </button>
+      </template>
+    </div>
+    <p x-show="excludedColors.length > 0" x-cloak class="text-xs text-base-content/40 mt-1">
+      <span x-text="excludedColors.length"></span> couleur<span x-show="excludedColors.length > 1">s</span> exclue<span x-show="excludedColors.length > 1">s</span> — cliquez à nouveau pour réactiver
+    </p>
+  </div>
+
+  {% include "conversions/partials/pre_conversion_summary.html" %}
+
 </div>

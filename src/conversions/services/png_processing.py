@@ -106,6 +106,10 @@ def remove_background(path: Path) -> Path:
     Retourne le chemin d'un fichier temporaire PNG RGBA (à supprimer par l'appelant).
     """
     try:
+        # onnxruntime est le backend requis par rembg — on l'importe en premier pour
+        # détecter son absence via ImportError propre, évitant le sys.exit(1) de rembg
+        # qui tuerait le worker Celery entier sans être attrapable par except Exception.
+        import onnxruntime  # noqa: F401
         import rembg
         with path.open('rb') as f:
             input_data = f.read()
@@ -115,7 +119,7 @@ def remove_background(path: Path) -> Path:
         tmp.close()
         logger.info("Suppression fond rembg : %s", path.name)
         return Path(tmp.name)
-    except Exception as exc:
+    except (ImportError, SystemExit, Exception) as exc:
         logger.warning("rembg indisponible ou erreur (%s), fallback seuillage Pillow.", exc)
         return _remove_background_pillow(path)
 
@@ -269,33 +273,58 @@ def _consolidate_svg_colors(svg_path: Path, n_colors: int) -> None:
     def rgb_to_hex(r: int, g: int, b: int) -> str:
         return f'#{r:02x}{g:02x}{b:02x}'
 
+    def rgb_to_lab(r: int, g: int, b: int) -> tuple[float, float, float]:
+        def linearize(c: float) -> float:
+            c /= 255.0
+            return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+        rl, gl, bl = linearize(r), linearize(g), linearize(b)
+        X = (rl * 0.4124564 + gl * 0.3575761 + bl * 0.1804375) / 0.95047
+        Y = rl * 0.2126729 + gl * 0.7151522 + bl * 0.0721750
+        Z = (rl * 0.0193339 + gl * 0.1191920 + bl * 0.9503041) / 1.08883
+        def f(t: float) -> float:
+            return t ** (1 / 3) if t > 0.008856 else 7.787 * t + 16 / 116
+        L = 116 * f(Y) - 16
+        a = 500 * (f(X) - f(Y))
+        b_lab = 200 * (f(Y) - f(Z))
+        return L, a, b_lab
+
+    def lab_dist(c1: tuple[float, float, float], c2: tuple[float, float, float]) -> float:
+        return math.sqrt(sum((x - y) ** 2 for x, y in zip(c1, c2)))
+
+    # Pré-calculer Lab pour chaque couleur unique
+    color_lab: dict[str, tuple[float, float, float]] = {
+        h: rgb_to_lab(*hex_to_rgb(h)) for h in fill_counts
+    }
+
+    # Clustering par distance CIE Lab (seuil 22 ≈ couleurs proches perceptuellement)
+    _LAB_CLUSTER_THRESH = 22.0
     colors_by_count = sorted(fill_counts.items(), key=lambda x: -x[1])
-    clusters: list[tuple[tuple[int, int, int], list[str]]] = []
+    clusters: list[tuple[tuple[int, int, int], tuple[float, float, float], list[str]]] = []
 
     for hex_color, _ in colors_by_count:
-        rgb = hex_to_rgb(hex_color)
+        lab = color_lab[hex_color]
         assigned = False
-        for center_rgb, members in clusters:
-            d = math.sqrt(sum((a - b) ** 2 for a, b in zip(rgb, center_rgb)))
-            if d < 50:
+        for center_rgb, center_lab, members in clusters:
+            if lab_dist(lab, center_lab) < _LAB_CLUSTER_THRESH:
                 members.append(hex_color)
                 assigned = True
                 break
         if not assigned:
-            clusters.append((rgb, [hex_color]))
+            clusters.append((hex_to_rgb(hex_color), lab, [hex_color]))
 
-    clusters.sort(key=lambda c: -sum(fill_counts.get(h, 0) for h in c[1]))
+    clusters.sort(key=lambda c: -sum(fill_counts.get(h, 0) for h in c[2]))
     kept = clusters[:n_colors]
 
     replacement: dict[str, str] = {}
-    for center_rgb, members in kept:
+    for center_rgb, _center_lab, members in kept:
         center_hex = rgb_to_hex(*center_rgb)
         for old_hex in members:
             replacement[old_hex] = center_hex
 
     for hex_color in fill_counts:
         if hex_color not in replacement:
-            best = min(kept, key=lambda c: math.sqrt(sum((a - b) ** 2 for a, b in zip(hex_to_rgb(hex_color), c[0]))))
+            hex_lab = color_lab[hex_color]
+            best = min(kept, key=lambda c: lab_dist(hex_lab, c[1]))
             replacement[hex_color] = rgb_to_hex(*best[0])
 
     changed = False
@@ -312,17 +341,23 @@ def _consolidate_svg_colors(svg_path: Path, n_colors: int) -> None:
 
 
 def _vectorize_vtracer_cli(
-    png_path: Path, svg_path: Path, n_colors: int, vtracer_bin: str
+    png_path: Path, svg_path: Path, n_colors: int, vtracer_bin: str,
+    fine_details: bool = False,
 ) -> bool:
     """
     Vectorise PNG → SVG via le binaire CLI VTracer (ARM64-safe, sans SIGSEGV Python bindings).
     Retourne True si réussi, False sinon (l'appelant basculera sur potrace).
     """
-    # Paramètres adaptatifs : designs complexes (n_colors > 8) → plus de détails préservés
     gradient_step = max(8, 256 // max(n_colors, 1))
-    filter_speckle = 2 if n_colors > 8 else 4
-    color_precision = 8 if n_colors > 8 else 6
-    path_precision = 4 if n_colors > 8 else 3
+    if fine_details:
+        # Texte fin / détails nets : speckle minimal, précision maximale, coins francs
+        filter_speckle = 1
+        color_precision = 8
+        path_precision = 6
+    else:
+        filter_speckle = 2 if n_colors > 8 else 4
+        color_precision = 8 if n_colors > 8 else 6
+        path_precision = 4 if n_colors > 8 else 3
     result = subprocess.run(
         [
             vtracer_bin,
@@ -373,6 +408,15 @@ def _quantize_to_n_colors(path: Path, n_colors: int) -> Path:
     return Path(tmp.name)
 
 
+def _detect_fine_details(img: Image.Image) -> bool:
+    """Retourne True si l'image contient du texte fin ou des détails à bords nets."""
+    gray = img.convert('L')
+    edges = gray.filter(ImageFilter.FIND_EDGES)
+    pixels = list(edges.getdata())
+    edge_ratio = sum(1 for p in pixels if p > 30) / max(1, len(pixels))
+    return edge_ratio > 0.15
+
+
 def vectorize_to_svg(png_path: Path, n_colors: int = 6) -> Path:
     """
     Vectorise un PNG en SVG via un routeur logo/photo.
@@ -389,13 +433,19 @@ def vectorize_to_svg(png_path: Path, n_colors: int = 6) -> Path:
     svg_path = Path(tmp_svg.name)
 
     try:
+        with Image.open(flattened_path) as _img_fd:
+            _img_for_detection = _img_fd.copy()
+        fine_details = _detect_fine_details(_img_for_detection)
+        if fine_details:
+            logger.info('[routing] détails fins détectés dans %s — paramètres précision max', png_path.name)
+
         image_type = _detect_image_type(flattened_path, n_colors)
         logger.info('[routing] %s → %s (n_colors=%d)', png_path.name, image_type, n_colors)
 
         if image_type == 'logo':
             # Logos : potrace en priorité, couleurs extraites pixel par pixel sans quantification.
             try:
-                return _vectorize_potrace(flattened_path, svg_path, n_colors)
+                return _vectorize_potrace(flattened_path, svg_path, n_colors, fine_details=fine_details)
             except RuntimeError as potrace_err:
                 logger.warning('[routing] potrace échoué pour logo (%s), fallback VTracer.', potrace_err)
             # Potrace absent ou échoué → cascade VTracer ci-dessous
@@ -405,7 +455,7 @@ def vectorize_to_svg(png_path: Path, n_colors: int = 6) -> Path:
         quantized_tmp = quantized_path if quantized_path != flattened_path else None
 
         vtracer_bin = _find_vtracer_binary()
-        if vtracer_bin and _vectorize_vtracer_cli(quantized_path, svg_path, n_colors, vtracer_bin):
+        if vtracer_bin and _vectorize_vtracer_cli(quantized_path, svg_path, n_colors, vtracer_bin, fine_details=fine_details):
             return svg_path
 
         _preexec = None
@@ -429,7 +479,7 @@ def vectorize_to_svg(png_path: Path, n_colors: int = 6) -> Path:
                        f' : {stderr}' if stderr else '')
 
         try:
-            return _vectorize_potrace(quantized_path, svg_path, n_colors)
+            return _vectorize_potrace(quantized_path, svg_path, n_colors, fine_details=fine_details)
         except RuntimeError as potrace_err:
             logger.warning('potrace échoué (%s), fallback Inkscape.', potrace_err)
 
@@ -652,7 +702,7 @@ def _smooth_mask_to_1bit(mask: 'Image.Image') -> 'Image.Image':
     return blurred.point(lambda x: 0 if x < 128 else 255).convert('1')
 
 
-def _vectorize_potrace(png_path: Path, svg_path: Path, n_colors: int = 6) -> Path:
+def _vectorize_potrace(png_path: Path, svg_path: Path, n_colors: int = 6, fine_details: bool = False) -> Path:
     """
     Vectorise PNG → SVG multi-couleurs via potrace.
     Utilise getcolors() exact pour les logos/aplats (fidélité couleurs garantie),
@@ -713,12 +763,16 @@ def _vectorize_potrace(png_path: Path, svg_path: Path, n_colors: int = 6) -> Pat
                 potrace_svg = tmpdir_path / f'out_{idx}.svg'
                 _color_to_pbm(mask_1bit, pbm_path)
 
-                turdsize = '1' if n_colors > 8 else '2'
-                opttolerance = '0.1' if n_colors > 8 else '0.2'
+                if fine_details:
+                    turdsize, opttolerance, alphamax = '1', '0.05', '0.0'
+                else:
+                    turdsize = '1' if n_colors > 8 else '2'
+                    opttolerance = '0.1' if n_colors > 8 else '0.2'
+                    alphamax = '0.1'
                 result = subprocess.run(
                     [potrace_bin, '--svg',
                      '--unit', '1',
-                     '--alphamax', '0.1',
+                     '--alphamax', alphamax,
                      '--turdsize', turdsize,
                      '--opttolerance', opttolerance,
                      '--output', str(potrace_svg), str(pbm_path)],
@@ -758,12 +812,16 @@ def _vectorize_potrace(png_path: Path, svg_path: Path, n_colors: int = 6) -> Pat
                 potrace_svg = tmpdir_path / f'out_{color_idx}.svg'
                 _color_to_pbm(mask_1bit, pbm_path)
 
-                turdsize = '1' if n_colors > 8 else '2'
-                opttolerance = '0.1' if n_colors > 8 else '0.2'
+                if fine_details:
+                    turdsize, opttolerance, alphamax = '1', '0.05', '0.0'
+                else:
+                    turdsize = '1' if n_colors > 8 else '2'
+                    opttolerance = '0.1' if n_colors > 8 else '0.2'
+                    alphamax = '0.1'
                 result = subprocess.run(
                     [potrace_bin, '--svg',
                      '--unit', '1',
-                     '--alphamax', '0.1',
+                     '--alphamax', alphamax,
                      '--turdsize', turdsize,
                      '--opttolerance', opttolerance,
                      '--output', str(potrace_svg), str(pbm_path)],
