@@ -821,6 +821,56 @@ def scale_svg_to_width_mm(input_svg: Path, target_width_mm: int) -> Path:
     return Path(tmp.name)
 
 
+def get_svg_colors_with_count(svg_path: Path) -> list[dict]:
+    """
+    Retourne la liste des couleurs de fill distinctes du SVG avec le nombre d'éléments par couleur.
+    Résultat trié par count décroissant : [{'hex': '#rrggbb', 'count': N}, ...]
+    """
+    try:
+        root = ET.parse(svg_path).getroot()
+    except ET.ParseError:
+        return []
+
+    counts: dict[str, int] = {}
+    for el in root.iter():
+        fill = el.get('fill', '').strip().lower()
+        if fill and fill not in ('none', 'transparent') and not fill.startswith('url('):
+            counts[fill] = counts.get(fill, 0) + 1
+
+    return sorted(
+        [{'hex': h, 'count': c} for h, c in counts.items()],
+        key=lambda x: -x['count'],
+    )
+
+
+def merge_svg_colors(svg_path: Path, source_hex: str, target_hex: str) -> int:
+    """
+    Remplace tous les fills source_hex par target_hex dans le SVG. Modifie le fichier en place.
+    Retourne le nombre d'éléments modifiés.
+    """
+    _register_svg_namespaces()
+    try:
+        tree = ET.parse(svg_path)
+    except ET.ParseError:
+        return 0
+
+    root = tree.getroot()
+    src = source_hex.strip().lower()
+    tgt = target_hex.strip().lower()
+    modified = 0
+
+    for el in root.iter():
+        if el.get('fill', '').strip().lower() == src:
+            el.set('fill', tgt)
+            modified += 1
+
+    if modified:
+        tree.write(svg_path, encoding='unicode', xml_declaration=True)
+        logger.info('[editor] %d éléments %s → %s dans %s', modified, src, tgt, svg_path.name)
+
+    return modified
+
+
 def remove_excluded_colors_from_svg(svg_path: Path, excluded_hexes: list[str]) -> int:
     """
     Supprime tous les éléments SVG dont le fill correspond à l'une des couleurs exclues.

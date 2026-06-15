@@ -1,0 +1,147 @@
+<div class="card-body"
+     x-data="{
+       scale: 1, tx: 0, ty: 0, drag: false, sx: 0, sy: 0,
+       selectedForMerge: null,
+       wheel(e) {
+         e.preventDefault();
+         const d = e.deltaY > 0 ? 0.85 : 1.15;
+         this.scale = Math.min(Math.max(this.scale * d, 0.2), 8);
+       },
+       down(e) { this.drag = true; this.sx = e.clientX - this.tx; this.sy = e.clientY - this.ty; },
+       move(e) { if (!this.drag) return; this.tx = e.clientX - this.sx; this.ty = e.clientY - this.sy; },
+       up() { this.drag = false; },
+       reset() { this.scale = 1; this.tx = 0; this.ty = 0; }
+     }">
+
+  <!-- Champ caché pour la couleur source de fusion (lu par hx-include) -->
+  <input type="hidden" name="source" id="merge-source-field" x-model="selectedForMerge">
+
+  <div class="flex items-center justify-between mb-1">
+    <h3 class="card-title text-info text-base">Vérifiez le SVG vectorisé</h3>
+    <div class="badge badge-info badge-outline badge-sm">attente validation</div>
+  </div>
+  <p class="text-sm text-base-content/50 mb-4">Supprimez ou fusionnez des couleurs avant la conversion PES.</p>
+
+  <!-- Aperçu comparatif -->
+  <div class="grid grid-cols-2 gap-3">
+    <div>
+      <p class="text-xs text-center text-base-content/40 mb-1 uppercase tracking-wide font-medium">Image source</p>
+      <img src="{{ job.original_file.url }}"
+           class="rounded-lg border border-base-200 w-full max-h-44 object-contain bg-white"
+           alt="Image source">
+    </div>
+
+    <div>
+      <p class="text-xs text-center text-base-content/40 mb-1 uppercase tracking-wide font-medium">SVG vectorisé</p>
+      <div class="rounded-lg border border-base-200 w-full h-44 overflow-hidden bg-white relative select-none"
+           @wheel.prevent="wheel($event)"
+           @mousedown="down($event)"
+           @mousemove="move($event)"
+           @mouseup="up()"
+           @mouseleave="up()">
+        <img src="{{ job.vectorized_svg_file.url }}?v={{ job.updated_at|date:'U' }}"
+             :style="{
+               transform: 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')',
+               transformOrigin: '0 0',
+               cursor: drag ? 'grabbing' : 'grab'
+             }"
+             class="w-full h-full object-contain"
+             draggable="false"
+             alt="SVG vectorisé">
+      </div>
+      <div class="flex gap-1 mt-1 justify-center">
+        <button @click.prevent="scale = Math.min(scale * 1.4, 8)" class="btn btn-ghost btn-xs font-mono">＋</button>
+        <button @click.prevent="reset()" class="btn btn-ghost btn-xs font-mono" title="Réinitialiser la vue">↺</button>
+        <button @click.prevent="scale = Math.max(scale * 0.7, 0.2)" class="btn btn-ghost btn-xs font-mono">－</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Liste des couleurs -->
+  {% if svg_colors %}
+  <div class="mt-5">
+    <p class="text-xs text-base-content/50 mb-2 font-medium uppercase tracking-wide flex items-center gap-2">
+      Couleurs — {{ svg_colors|length }}
+      <span x-show="selectedForMerge" class="text-info normal-case font-normal" style="display:none">
+        Cliquez une 2ᵉ couleur pour fusionner →
+      </span>
+    </p>
+
+    <div class="flex flex-col gap-1">
+      {% for color in svg_colors %}
+      <div class="flex items-center gap-2 px-2 py-1.5 rounded-lg transition-all"
+           :class="selectedForMerge === '{{ color.hex }}' ? 'bg-info/10 ring-1 ring-info/40' : 'bg-base-200/60'">
+
+        <span class="w-4 h-4 rounded-sm shrink-0 border border-base-300/50"
+              style="background-color: {{ color.hex }};"></span>
+
+        <span class="text-xs font-mono text-base-content/70 flex-1 truncate">{{ color.hex }}</span>
+
+        <span class="text-xs text-base-content/35 shrink-0">{{ color.count }}</span>
+
+        <!-- Bouton sélection pour fusion -->
+        <button
+          x-show="!selectedForMerge || selectedForMerge === '{{ color.hex }}'"
+          @click.prevent="selectedForMerge = (selectedForMerge === '{{ color.hex }}') ? null : '{{ color.hex }}'"
+          class="btn btn-ghost btn-xs text-warning shrink-0"
+          :class="selectedForMerge === '{{ color.hex }}' ? 'btn-warning btn-outline' : ''"
+          :title="selectedForMerge === '{{ color.hex }}' ? 'Annuler la sélection' : 'Sélectionner pour fusionner'">
+          <span x-text="selectedForMerge === '{{ color.hex }}' ? '✕' : '⇄'">⇄</span>
+        </button>
+
+        <!-- Bouton fusionner ici (visible quand une autre couleur est déjà sélectionnée) -->
+        <button
+          x-show="selectedForMerge && selectedForMerge !== '{{ color.hex }}'"
+          style="display:none"
+          hx-post="{% url 'conversions:svg_merge_colors' job.id %}"
+          hx-include="#merge-source-field"
+          hx-vals='{"target": "{{ color.hex }}"}'
+          hx-target="#conversion-status"
+          hx-swap="outerHTML"
+          @click="selectedForMerge = null"
+          class="btn btn-warning btn-xs shrink-0">
+          → Fusionner
+        </button>
+
+        <!-- Bouton supprimer couleur -->
+        <button
+          hx-post="{% url 'conversions:svg_remove_color' job.id %}"
+          hx-vals='{"color": "{{ color.hex }}"}'
+          hx-target="#conversion-status"
+          hx-swap="outerHTML"
+          class="btn btn-error btn-xs shrink-0"
+          title="Supprimer tous les éléments de cette couleur">
+          ✕
+        </button>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-warning mt-4 text-sm">
+    Aucune couleur détectée dans le SVG vectorisé.
+  </div>
+  {% endif %}
+
+  <!-- Actions footer -->
+  <div class="card-actions justify-between items-center mt-6 pt-4 border-t border-base-200">
+    <button
+      hx-post="{% url 'conversions:svg_validate' job.id %}"
+      hx-target="#conversion-status"
+      hx-swap="outerHTML"
+      class="btn btn-ghost btn-sm text-base-content/40 hover:text-base-content/70">
+      Convertir directement sans modifier
+    </button>
+
+    <button
+      hx-post="{% url 'conversions:svg_validate' job.id %}"
+      hx-target="#conversion-status"
+      hx-swap="outerHTML"
+      class="btn btn-info gap-2">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+      </svg>
+      Valider et convertir en PES
+    </button>
+  </div>
+</div>

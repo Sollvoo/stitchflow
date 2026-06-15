@@ -3,6 +3,7 @@ import tempfile
 from collections import Counter
 from pathlib import Path
 
+from django.conf import settings
 from django.views.generic import CreateView, DetailView, View
 from django.contrib import messages
 from django.http import FileResponse, Http404, HttpResponse, HttpRequest, JsonResponse
@@ -12,7 +13,7 @@ from PIL import Image
 
 from .models import ConversionJob
 from .forms import SVGUploadForm, PNGUploadForm, PDFUploadForm
-from .tasks import process_conversion_job
+from .tasks import process_conversion_job, finalize_svg_to_pes
 
 
 class UnifiedUploadView(View):
@@ -204,6 +205,16 @@ class JobStatusView(View):
 
     def _render_status(self, request, job):
         from django.template.loader import render_to_string
+
+        if job.status == job.Status.AWAITING_SVG_VALIDATION:
+            from .services.svg_utils import get_svg_colors_with_count
+            svg_path = Path(settings.MEDIA_ROOT) / job.vectorized_svg_file.name if job.vectorized_svg_file else None
+            svg_colors = get_svg_colors_with_count(svg_path) if svg_path and svg_path.exists() else []
+            return render_to_string(
+                'conversions/partials/conversion_status.html',
+                {'job': job, 'svg_colors': svg_colors},
+                request=request,
+            )
 
         estimated_seconds = None
         if job.status == job.Status.PROCESSING:
@@ -564,3 +575,92 @@ class JobDownloadView(View):
         response = FileResponse(job.output_file.open('rb'), as_attachment=True)
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
+
+
+def _render_svg_editor_response(request: HttpRequest, job: ConversionJob) -> HttpResponse:
+    from django.template.loader import render_to_string
+    from .services.svg_utils import get_svg_colors_with_count
+
+    svg_path = Path(settings.MEDIA_ROOT) / job.vectorized_svg_file.name if job.vectorized_svg_file else None
+    svg_colors = get_svg_colors_with_count(svg_path) if svg_path and svg_path.exists() else []
+    html = render_to_string(
+        'conversions/partials/conversion_status.html',
+        {'job': job, 'svg_colors': svg_colors},
+        request=request,
+    )
+    return HttpResponse(html, content_type='text/html')
+
+
+class SvgRemoveColorView(View):
+    """Supprime tous les éléments d'une couleur donnée du SVG vectorisé."""
+
+    def post(self, request: HttpRequest, pk) -> HttpResponse:
+        from django.conf import settings as _s
+        from .services.svg_utils import remove_excluded_colors_from_svg
+
+        job = get_object_or_404(ConversionJob, pk=pk)
+        if job.status != ConversionJob.Status.AWAITING_SVG_VALIDATION or not job.vectorized_svg_file:
+            return HttpResponse(status=400)
+
+        color = request.POST.get('color', '').strip()
+        if not color.startswith('#'):
+            return HttpResponse(status=400)
+
+        svg_path = Path(_s.MEDIA_ROOT) / job.vectorized_svg_file.name
+        if svg_path.exists():
+            n = remove_excluded_colors_from_svg(svg_path, [color])
+            if n > 0:
+                from django.utils import timezone
+                job.updated_at = timezone.now()
+                job.save(update_fields=['updated_at'])
+
+        return _render_svg_editor_response(request, job)
+
+
+class SvgMergeColorsView(View):
+    """Fusionne deux couleurs du SVG vectorisé (source → target)."""
+
+    def post(self, request: HttpRequest, pk) -> HttpResponse:
+        from django.conf import settings as _s
+        from .services.svg_utils import merge_svg_colors
+
+        job = get_object_or_404(ConversionJob, pk=pk)
+        if job.status != ConversionJob.Status.AWAITING_SVG_VALIDATION or not job.vectorized_svg_file:
+            return HttpResponse(status=400)
+
+        source = request.POST.get('source', '').strip()
+        target = request.POST.get('target', '').strip()
+        if not source.startswith('#') or not target.startswith('#') or source == target:
+            return HttpResponse(status=400)
+
+        svg_path = Path(_s.MEDIA_ROOT) / job.vectorized_svg_file.name
+        if svg_path.exists():
+            n = merge_svg_colors(svg_path, source, target)
+            if n > 0:
+                from django.utils import timezone
+                job.updated_at = timezone.now()
+                job.save(update_fields=['updated_at'])
+
+        return _render_svg_editor_response(request, job)
+
+
+class SvgValidateView(View):
+    """Valide le SVG édité et lance la conversion PES (finalize_svg_to_pes)."""
+
+    def post(self, request: HttpRequest, pk) -> HttpResponse:
+        from django.template.loader import render_to_string
+
+        job = get_object_or_404(ConversionJob, pk=pk)
+        if job.status != ConversionJob.Status.AWAITING_SVG_VALIDATION:
+            return HttpResponse(status=400)
+
+        job.status = ConversionJob.Status.PENDING
+        job.save(update_fields=['status', 'updated_at'])
+        finalize_svg_to_pes.delay(str(job.id))
+
+        html = render_to_string(
+            'conversions/partials/conversion_status.html',
+            {'job': job},
+            request=request,
+        )
+        return HttpResponse(html, content_type='text/html')

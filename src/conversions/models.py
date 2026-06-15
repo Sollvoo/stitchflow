@@ -6,6 +6,7 @@ class ConversionJob(models.Model):
     class Status(models.TextChoices):
         PENDING = 'pending', 'En attente'
         PROCESSING = 'processing', 'En cours'
+        AWAITING_SVG_VALIDATION = 'awaiting_svg_validation', 'Attente validation SVG'
         COMPLETED = 'completed', 'Terminé'
         FAILED = 'failed', 'Échoué'
 
@@ -13,7 +14,7 @@ class ConversionJob(models.Model):
     original_file = models.FileField(upload_to='conversions/uploads/')
     source_format = models.CharField(max_length=10, default='svg')
     status = models.CharField(
-        max_length=20,
+        max_length=30,
         choices=Status.choices,
         default=Status.PENDING,
         db_index=True,

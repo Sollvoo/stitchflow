@@ -30,6 +30,11 @@
   </div>
 </div>
 
+{% elif job.status == 'awaiting_svg_validation' %}
+<div id="conversion-status" class="card bg-base-100 shadow-lg border border-info/30">
+  {% include "conversions/partials/svg_editor.html" %}
+</div>
+
 {% elif job.status == 'completed' %}
 <div id="conversion-status" class="card bg-base-100 shadow-lg border border-success/30">
   <div class="card-body items-center text-center py-10">
