@@ -355,8 +355,8 @@ def _vectorize_vtracer_cli(
         color_precision = 8
         path_precision = 6
     else:
-        filter_speckle = 2 if n_colors > 8 else 4
-        color_precision = 8 if n_colors > 8 else 6
+        filter_speckle = 2 if n_colors > 3 else 4
+        color_precision = 7 if n_colors > 3 else 6
         path_precision = 4 if n_colors > 8 else 3
     result = subprocess.run(
         [

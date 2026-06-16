@@ -6,7 +6,7 @@ from django.core.files.base import ContentFile
 from django.test import TestCase, override_settings
 
 from conversions.models import ConversionJob
-from conversions.tasks import process_conversion_job
+from conversions.tasks import finalize_svg_to_pes, process_conversion_job
 
 MINIMAL_PNG_BYTES = (
     b'\x89PNG\r\n\x1a\n'
@@ -76,10 +76,17 @@ class ProcessPNGJobSuccessTest(TestCase):
 
                 process_conversion_job(str(job.id))
                 job.refresh_from_db()
-                self.assertEqual(job.status, ConversionJob.Status.COMPLETED)
+                # Depuis la Phase 8, le pipeline raster s'arrête en attente de
+                # validation SVG par l'utilisateur avant la conversion PES.
+                self.assertEqual(job.status, ConversionJob.Status.AWAITING_SVG_VALIDATION)
                 mock_validate_png.assert_called_once()
                 mock_preprocess.assert_called_once()
                 mock_vectorize.assert_called_once()
+
+                # L'utilisateur valide le SVG → finalisation PES.
+                finalize_svg_to_pes(str(job.id))
+                job.refresh_from_db()
+                self.assertEqual(job.status, ConversionJob.Status.COMPLETED)
 
 
 class ProcessPNGJobPNGValidationErrorTest(TestCase):

@@ -52,3 +52,4 @@ vendor/vtracer.exe
 
 # Résultats de tests manuels (générés, pas de source)
 tests/results/
+tests/benchmark_results_*.json

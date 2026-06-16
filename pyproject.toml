@@ -25,6 +25,7 @@ ai = [
 ]
 dev = [
     "django-debug-toolbar",
+    "ruff>=0.15",
 ]
 
 [tool.ruff]

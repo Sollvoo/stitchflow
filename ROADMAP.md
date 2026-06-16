@@ -218,28 +218,28 @@ Objectif : analyser le fichier source AVANT la conversion, prévenir les problè
 
 ---
 
-## Phase 8 — Correction SVG avant conversion (intervention légère)
+## Phase 8 — Correction SVG avant conversion (intervention légère) ✅
 
 Objectif : permettre d'ajuster le SVG vectorisé **après** la vectorisation PNG→SVG mais **avant** Ink/Stitch. Corriger les cas où la vectorisation automatique n'est pas parfaite, sans avoir besoin d'un éditeur complet.
 
 > Approche : SVG natif dans le navigateur + Alpine.js + HTMX. Pas de bibliothèque JS externe dans cette phase.
 
 ### 8a — Visualisation du SVG intermédiaire
-- [ ] Partial `conversions/svg_editor.html` : affichage SVG inline avec zoom + pan (CSS `transform-origin`)
-- [ ] Pipeline modifié : PNG upload → vectorisation → **pause sur le SVG** → validation utilisateur → PES
-- [ ] Option "Convertir directement" pour bypasser et garder le comportement actuel
-- [ ] Affichage comparatif : image source à gauche / SVG vectorisé à droite
+- [x] Partial `conversions/svg_editor.html` : affichage SVG inline avec zoom + pan (CSS `transform-origin`)
+- [x] Pipeline modifié : PNG upload → vectorisation → **pause sur le SVG** → validation utilisateur → PES (`ConversionJob.Status.AWAITING_SVG_VALIDATION`)
+- [x] Option "Convertir directement" pour bypasser et garder le comportement actuel
+- [x] Affichage comparatif : image source à gauche / SVG vectorisé à droite
 
 ### 8b — Ajustement des couleurs sur le SVG
-- [ ] Liste des couleurs du SVG vectorisé avec swatch + nombre de paths par couleur
-- [ ] Supprimer une couleur entière (retire tous ses paths du SVG)
-- [ ] Fusionner manuellement deux couleurs (glisser une vers l'autre, ou sélection)
-- [ ] Endpoint HTMX `POST /conversions/<id>/svg/remove-color/` et `/merge-colors/`
+- [x] Liste des couleurs du SVG vectorisé avec swatch + nombre de paths par couleur
+- [x] Supprimer une couleur entière (retire tous ses paths du SVG) — `SvgRemoveColorView`
+- [x] Fusionner manuellement deux couleurs (glisser une vers l'autre, ou sélection) — `SvgMergeColorsView`
+- [x] Endpoint HTMX `POST /conversions/<id>/svg/remove-color/` et `/merge-colors/`
 
 ### 8c — Validation et relance
-- [ ] Bouton "Valider et convertir en PES" → reprend le pipeline à l'étape Ink/Stitch uniquement
-- [ ] Le SVG modifié remplace `vectorized_svg_file` du job — même UUID, pas de nouveau job
-- [ ] Prévisualisation live du SVG modifié avant validation (rechargement HTMX du SVG inline)
+- [x] Bouton "Valider et convertir en PES" → reprend le pipeline à l'étape Ink/Stitch uniquement — `SvgValidateView` + `finalize_svg_to_pes`
+- [x] Le SVG modifié remplace `vectorized_svg_file` du job — même UUID, pas de nouveau job
+- [x] Prévisualisation live du SVG modifié avant validation (rechargement HTMX du SVG inline)
 
 ---
 

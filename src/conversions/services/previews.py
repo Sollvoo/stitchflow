@@ -190,6 +190,10 @@ def _score_vectorization_coverage(
     # Plancher à 40 : une vectorisation qui produit au moins 1 couleur n'est pas un échec total,
     # même si l'image avait naturellement moins de couleurs que demandé.
     score = max(score, 40)
+    # Quasi-couverture : une couleur manquante = vraisemblablement le fond blanc retiré par
+    # remove_bg, pas un échec de vectorisation. Floor 80 reflète cette situation normale.
+    if n_obtained >= n_colors_requested - 1 and n_obtained > 0:
+        score = max(score, 80)
 
     if n_obtained == n_colors_requested:
         msg = f'{n_obtained}/{n_colors_requested} couleurs vectorisées — couverture exacte'
@@ -264,7 +268,7 @@ def _compute_quality_score(
     elif stitch_count < 500:
         s_score = 20
         s_msg = f'{stitch_count} points — design très pauvre'
-    elif stitch_count < 1500:
+    elif stitch_count < 1200:
         s_score = 60
         s_msg = f'{stitch_count} points — design simple'
     elif stitch_count <= 50000:
