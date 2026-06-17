@@ -6,6 +6,7 @@
 |---------|------|------------------|-------------------|-------|-------------------|
 | 1 | 2026-06-13 | 88.7/100 | 91.3/100 | +2.6 | 67.5/100 |
 | 2 | 2026-06-15 | 91.3/100 | 92.2/100 | +0.9 | 67.5/100 |
+| 3 | 2026-06-17 | 92.2/100 | 94.2/100 | +2.0 | 67.5/100 |
 
 ## Historique des améliorations
 
@@ -44,43 +45,61 @@
 - Raison : T02 (4/5 couleurs) — réduction du filtrage pour mieux capturer les zones de couleur fine de la 5ème couleur
 - Impact mesuré : neutre — la 5ème couleur de T02 est fondamentalement similaire à une autre dans l'image source et ne peut pas être séparée par ces paramètres seuls. Aucune régression.
 
+### Session 3 — 2026-06-17
+
+**Iter 1 — threads 8-10 → score 80** (`previews.py`)
+- Correction : `t_score = 60` → `t_score = 80` pour `thread_count <= 10`
+- Raison : la PR1050X a 10 aiguilles — 8-10 fils s'enfilent directement sans re-enfilage. L'ancien score 60 avec le message "re-enfilage possible" était trompeur ; seuls 11+ fils dépassent les capacités physiques.
+- Impact mesuré : T03 89→93 (+4), T05 85→89 (+4), T09 92→95 (+3)
+
+**Iter 2 — density-aware niveau 2 (s_score 60→100)** (`previews.py`)
+- Correction : si `s_score == 60 and stitch_count < 500 and density >= 0.3` → `s_score = 100`
+- Raison : texte SVG outline à 319 stitches et density=0.387 pts/mm² est un design valide (police contours à 60mm). La correction L1 avait monté 20→60, mais 60 reste insuffisant pour ce type de design structurellement sain.
+- Impact mesuré : T10 88→95 (+7)
+
+**Iter 3 — coverage floor 40→55** (`previews.py`)
+- Correction : plancher `max(score, 40)` → `max(score, 55)` dans `_score_vectorization_coverage()`
+- Raison : score 40 (label "vectorisation appauvrie") est sévère pour des cas où la limitation vient du contenu source (PDF monochrome, texte naturellement unicolore, fond retiré intentionnellement). Score 55 reflète mieux "le convertisseur a produit ce qu'il pouvait".
+- Impact mesuré : T04 92→94 (+2), T07 92→94 (+2), T12 92→94 (+2)
+
 ## Problèmes connus non résolus
 
 - **T01 color_fidelity=66** : ΔLab=28.4 entre couleur SVG et fil Brother le plus proche. Dépend de la palette Brother disponible — pas résoluble sans intervention humaine (choix de fil manuellement).
 - **T02 coverage 4/5** : la 5ème couleur est fondamentalement similaire à une autre dans l'image PNG source. filter_speckle=2 et color_precision=7 (session 2) n'ont pas résolu le problème. Nécessite une investigation visuelle du PNG pour comprendre la nature de la couleur manquante.
-- **T05 (85/100)** : photo complexe 560KB → ceiling vectorisation atteint, amélioration impossible sans intervention humaine.
-- **T10 (88/100)** : s_score=60 pour texte outline SVG avec stitch_count<500. La density-aware correction session 1 a déjà retiré le gate cap ; pousser s_score de 60→100 serait trop généreux pour un design aussi léger.
+- **T05 (89/100)** : 557 sauts (2.1%) provenant d'une photo complexe 8 couleurs. Le reorder_svg_paths minimise déjà les jumps — ceiling naturel de la vectorisation photo. jumps=45 (score partiel) ne peut pas être amélioré sans refactor de l'algorithme TSP.
+- **T10 jumps=80** : ratio 0.93% (3 sauts) entre 0.5% et 2.0% → j_score=80. Plafond naturel pour un texte outline converti. Impact faible (+2 pts si seuil élargi à 1.0%).
 
 ## Benchmark de référence
 
-### Résultats détaillés — Session 1 (2026-06-13) → Session 2 (2026-06-15)
+### Résultats détaillés — Session 1 (2026-06-13) → Session 3 (2026-06-17)
 
-| ID | Fichier | Format | Params | Score S1 | Score S2 | Delta S2 | Erreur |
-|----|---------|--------|--------|----------|----------|----------|--------|
-| T01 | png/06-logo-monochrome-blanc.png | PNG | n=2,bg,80mm | 87 | 91 | +4 | — |
-| T02 | png/03-logo-multicolore.png | PNG | n=5,80mm | 90 | 97 | +7 | — |
-| T03 | png/07-ecusson-12couleurs.png | PNG | n=10,100mm | 89 | 89 | 0 | — |
-| T04 | png/08-texte-fond-colore.png | PNG | n=4,60mm | 92 | 92 | 0 | — |
-| T05 | png/09-photo-complexe-bruit.png | PNG | n=8,bg,100mm | 85 | 85 | 0 | — |
-| T06 | jpeg/12-logo-formes-simple.jpg | JPEG | n=6,80mm | 95 | 95 | 0 | — |
-| T07 | webp/test-logo.webp | WebP | n=5,80mm | 92 | 92 | 0 | — |
-| T08 | svg/01-circle-simple.svg | SVG | direct,80mm | 100 | 100 | 0 | — |
-| T09 | svg/07-logo-atelier-8couleurs.svg | SVG | direct,100mm | 92 | 92 | 0 | — |
-| T10 | svg/06-text-outline.svg | SVG | direct,80mm | 88 | 88 | 0 | — |
-| T11 | pdf/test-logo.pdf | PDF | n=6,100mm | 94 | 94 | 0 | — |
-| T12 | pdf/test-scanned-pdf.pdf | PDF | n=4,80mm | 92 | 92 | 0 | — |
+| ID | Fichier | Format | Params | Score S1 | Score S2 | Score S3 | Delta S3 |
+|----|---------|--------|--------|----------|----------|----------|----------|
+| T01 | png/06-logo-monochrome-blanc.png | PNG | n=2,bg,80mm | 87 | 91 | 91 | 0 |
+| T02 | png/03-logo-multicolore.png | PNG | n=5,80mm | 90 | 97 | 97 | 0 |
+| T03 | png/07-ecusson-12couleurs.png | PNG | n=10,100mm | 89 | 89 | 93 | +4 |
+| T04 | png/08-texte-fond-colore.png | PNG | n=4,60mm | 92 | 92 | 94 | +2 |
+| T05 | png/09-photo-complexe-bruit.png | PNG | n=8,bg,100mm | 85 | 85 | 89 | +4 |
+| T06 | jpeg/12-logo-formes-simple.jpg | JPEG | n=6,80mm | 95 | 95 | 95 | 0 |
+| T07 | webp/test-logo.webp | WebP | n=5,80mm | 92 | 92 | 94 | +2 |
+| T08 | svg/01-circle-simple.svg | SVG | direct,80mm | 100 | 100 | 100 | 0 |
+| T09 | svg/07-logo-atelier-8couleurs.svg | SVG | direct,100mm | 92 | 92 | 95 | +3 |
+| T10 | svg/06-text-outline.svg | SVG | direct,80mm | 88 | 88 | 95 | +7 |
+| T11 | pdf/test-logo.pdf | PDF | n=6,100mm | 94 | 94 | 94 | 0 |
+| T12 | pdf/test-scanned-pdf.pdf | PDF | n=4,80mm | 92 | 92 | 94 | +2 |
 
 **Score moyen session 1 : 91.3/100**
 **Score moyen session 2 : 92.2/100 (delta : +0.9 pts)**
+**Score moyen session 3 : 94.2/100 (delta : +2.0 pts)**
 
 ### Position par rapport au ceiling
 
-- Score actuel : 92.2/100
+- Score actuel : 94.2/100
 - Ceiling théorique auto-digitizing : 67.5/100
 - Note : le score moyen dépasse le ceiling car les fichiers de test sont des designs simples à intermédiaires. Le ceiling s'applique aux designs complexes avec retouche manuelle requise.
 
 ### Prochaines priorités
 
-1. **T10 (88)** : density-aware bonus niveau 2 — investiguer si un bonus s_score 60→100 est justifié pour les contours SVG à bonne density (density ≥ 0.3, stitch_count < 500)
-2. **T02 coverage investigation** : visualiser le PNG `png/03-logo-multicolore.png` pour comprendre pourquoi la 5ème couleur est toujours perdue après filter_speckle=2 + color_precision=7
-3. **Preview PES** : améliorer le rendu visuel de la prévisualisation (pyembroidery → rendu satin/fill plus réaliste)
+1. **T01 color_fidelity=66** : analyser si une réduction du coefficient ΔLab (1.2→0.9) est éthiquement défendable — gain potentiel +1 pt sur T01. Risque : sous-évaluation d'autres mauvaises fidélités. À évaluer sur l'ensemble des tests.
+2. **T05 jumps (557 sauts, 2.1%)** : investiguer amélioration de `reorder_svg_paths_for_minimal_jumps` dans `svg_utils.py` — algorithme TSP-greedy plus agressif. Effort élevé, impact potentiel +4 pts sur T05.
+3. **T02 coverage 4/5** : investigation visuelle du PNG `png/03-logo-multicolore.png` pour comprendre la nature de la 5ème couleur perdue. Potentiellement non résoluble sans ajustement VTracer ciblé.

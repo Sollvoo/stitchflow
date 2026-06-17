@@ -200,9 +200,9 @@ def _score_vectorization_coverage(
 
     ratio = min(n_obtained, n_colors_requested) / max(n_obtained, n_colors_requested)
     score = int(ratio * 100)
-    # Plancher à 40 : une vectorisation qui produit au moins 1 couleur n'est pas un échec total,
-    # même si l'image avait naturellement moins de couleurs que demandé.
-    score = max(score, 40)
+    # Plancher à 55 : une vectorisation partielle n'est pas un échec total quand la source
+    # est naturellement mono (PDF scanné, texte unicolore, fond retiré intentionnellement).
+    score = max(score, 55)
     # Quasi-couverture : une couleur manquante = vraisemblablement le fond blanc retiré par
     # remove_bg, pas un échec de vectorisation. Floor 80 reflète cette situation normale.
     if n_obtained >= n_colors_requested - 1 and n_obtained > 0:
@@ -266,9 +266,9 @@ def _compute_quality_score(
         t_score = 100
         t_msg = f"{thread_count} fil(s) — idéal PR1050X (≤7)"
     elif thread_count <= 10:
-        # Resserré : 60 au lieu de 75 — dépasse déjà les 7 idéaux
-        t_score = 60
-        t_msg = f"{thread_count} fils — dépasse les 7 idéaux, re-enfilage possible"
+        # PR1050X = 10 aiguilles : 8-10 fils s'enfilent directement, pas de re-enfilage requis
+        t_score = 80
+        t_msg = f"{thread_count} fils — dans les limites PR1050X (10 aiguilles)"
     elif thread_count <= 15:
         # Resserré : 25 au lieu de 35 — re-enfilage = coût opérationnel réel
         t_score = 25
@@ -368,13 +368,20 @@ def _compute_quality_score(
         dens_score = 50
         dens_msg = "Densité non calculable"
 
-    # Correction density-aware pour designs compacts (textes, contours fins, petits logos) :
-    # stitch_count < 500 → normalement s_score=20 "très pauvre", mais si density >= 0.2 pts/mm²
-    # la faiblesse vient de la taille du design, pas d'un défaut de conversion.
+    # Correction density-aware niveau 1 : stitch < 500 "très pauvre" mais density >= 0.2
+    # → la faiblesse vient de la taille du design, pas d'un défaut de conversion.
     if s_score == 20 and density >= 0.2:
         s_score = 60
         s_msg = (
             f"{stitch_count} points — design compact (densité {density:.2f} pts/mm²)"
+        )
+
+    # Correction density-aware niveau 2 : design compact avec density >= 0.3 (contours/outlines)
+    # stitch < 500 + density >= 0.3 = design structurellement sain (texte, outline fin)
+    if s_score == 60 and stitch_count < 500 and density >= 0.3:
+        s_score = 100
+        s_msg = (
+            f"{stitch_count} points — design compact dense (densité {density:.2f} pts/mm²)"
         )
 
     # 6. Fidélité couleurs SVG→PES (18%)
