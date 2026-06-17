@@ -2,6 +2,9 @@
      x-data="{
        scale: 1, tx: 0, ty: 0, drag: false, sx: 0, sy: 0,
        selectedForMerge: null,
+       pickerOpen: false,
+       pickerTargetHex: null,
+       pickerFilter: '',
        wheel(e) {
          e.preventDefault();
          const d = e.deltaY > 0 ? 0.85 : 1.15;
@@ -10,7 +13,9 @@
        down(e) { this.drag = true; this.sx = e.clientX - this.tx; this.sy = e.clientY - this.ty; },
        move(e) { if (!this.drag) return; this.tx = e.clientX - this.sx; this.ty = e.clientY - this.sy; },
        up() { this.drag = false; },
-       reset() { this.scale = 1; this.tx = 0; this.ty = 0; }
+       reset() { this.scale = 1; this.tx = 0; this.ty = 0; },
+       openPicker(hex) { this.pickerTargetHex = hex; this.pickerFilter = ''; this.pickerOpen = true; },
+       closePicker() { this.pickerOpen = false; this.pickerTargetHex = null; }
      }">
 
   <!-- Champ caché pour la couleur source de fusion (lu par hx-include) -->
@@ -20,7 +25,7 @@
     <h3 class="card-title text-info text-base">Vérifiez le SVG vectorisé</h3>
     <div class="badge badge-info badge-outline badge-sm">attente validation</div>
   </div>
-  <p class="text-sm text-base-content/50 mb-4">Supprimez ou fusionnez des couleurs avant la conversion PES.</p>
+  <p class="text-sm text-base-content/50 mb-4">Supprimez, fusionnez ou remappez des couleurs avant la conversion PES.</p>
 
   <!-- Aperçu comparatif -->
   <div class="grid grid-cols-2 gap-3">
@@ -58,61 +63,88 @@
   </div>
 
   <!-- Liste des couleurs -->
-  {% if svg_colors %}
+  {% if colors_with_snap %}
   <div class="mt-5">
     <p class="text-xs text-base-content/50 mb-2 font-medium uppercase tracking-wide flex items-center gap-2">
-      Couleurs — {{ svg_colors|length }}
+      Couleurs — {{ colors_with_snap|length }}
       <span x-show="selectedForMerge" class="text-info normal-case font-normal" style="display:none">
         Cliquez une 2ᵉ couleur pour fusionner →
       </span>
     </p>
 
     <div class="flex flex-col gap-1">
-      {% for color in svg_colors %}
-      <div class="flex items-center gap-2 px-2 py-1.5 rounded-lg transition-all"
+      {% for color in colors_with_snap %}
+      <div class="flex flex-col gap-0.5 px-2 py-1.5 rounded-lg transition-all"
            :class="selectedForMerge === '{{ color.hex }}' ? 'bg-info/10 ring-1 ring-info/40' : 'bg-base-200/60'">
 
-        <span class="w-4 h-4 rounded-sm shrink-0 border border-base-300/50"
-              style="background-color: {{ color.hex }};"></span>
+        <!-- Ligne principale : couleur SVG + actions -->
+        <div class="flex items-center gap-2">
+          <span class="w-4 h-4 rounded-sm shrink-0 border border-base-300/50"
+                style="background-color: {{ color.hex }};"></span>
 
-        <span class="text-xs font-mono text-base-content/70 flex-1 truncate">{{ color.hex }}</span>
+          <span class="text-xs font-mono text-base-content/70 flex-1 truncate">{{ color.hex }}</span>
 
-        <span class="text-xs text-base-content/35 shrink-0">{{ color.count }}</span>
+          <span class="text-xs text-base-content/35 shrink-0">{{ color.count }}</span>
 
-        <!-- Bouton sélection pour fusion -->
-        <button
-          x-show="!selectedForMerge || selectedForMerge === '{{ color.hex }}'"
-          @click.prevent="selectedForMerge = (selectedForMerge === '{{ color.hex }}') ? null : '{{ color.hex }}'"
-          class="btn btn-ghost btn-xs text-warning shrink-0"
-          :class="selectedForMerge === '{{ color.hex }}' ? 'btn-warning btn-outline' : ''"
-          :title="selectedForMerge === '{{ color.hex }}' ? 'Annuler la sélection' : 'Sélectionner pour fusionner'">
-          <span x-text="selectedForMerge === '{{ color.hex }}' ? '✕' : '⇄'">⇄</span>
-        </button>
+          <!-- Bouton color picker Brother -->
+          {% if brother_palette %}
+          <button
+            @click.prevent="openPicker('{{ color.hex }}')"
+            x-show="!selectedForMerge"
+            class="btn btn-ghost btn-xs shrink-0"
+            title="Remapper vers un fil Brother">
+            🎨
+          </button>
+          {% endif %}
 
-        <!-- Bouton fusionner ici (visible quand une autre couleur est déjà sélectionnée) -->
-        <button
-          x-show="selectedForMerge && selectedForMerge !== '{{ color.hex }}'"
-          style="display:none"
-          hx-post="{% url 'conversions:svg_merge_colors' job.id %}"
-          hx-include="#merge-source-field"
-          hx-vals='{"target": "{{ color.hex }}"}'
-          hx-target="#conversion-status"
-          hx-swap="outerHTML"
-          @click="selectedForMerge = null"
-          class="btn btn-warning btn-xs shrink-0">
-          → Fusionner
-        </button>
+          <!-- Bouton sélection pour fusion -->
+          <button
+            x-show="!selectedForMerge || selectedForMerge === '{{ color.hex }}'"
+            @click.prevent="selectedForMerge = (selectedForMerge === '{{ color.hex }}') ? null : '{{ color.hex }}'"
+            class="btn btn-ghost btn-xs text-warning shrink-0"
+            :class="selectedForMerge === '{{ color.hex }}' ? 'btn-warning btn-outline' : ''"
+            :title="selectedForMerge === '{{ color.hex }}' ? 'Annuler la sélection' : 'Sélectionner pour fusionner'">
+            <span x-text="selectedForMerge === '{{ color.hex }}' ? '✕' : '⇄'">⇄</span>
+          </button>
 
-        <!-- Bouton supprimer couleur -->
-        <button
-          hx-post="{% url 'conversions:svg_remove_color' job.id %}"
-          hx-vals='{"color": "{{ color.hex }}"}'
-          hx-target="#conversion-status"
-          hx-swap="outerHTML"
-          class="btn btn-error btn-xs shrink-0"
-          title="Supprimer tous les éléments de cette couleur">
-          ✕
-        </button>
+          <!-- Bouton fusionner ici (visible quand une autre couleur est déjà sélectionnée) -->
+          <button
+            x-show="selectedForMerge && selectedForMerge !== '{{ color.hex }}'"
+            style="display:none"
+            hx-post="{% url 'conversions:svg_merge_colors' job.id %}"
+            hx-include="#merge-source-field"
+            hx-vals='{"target": "{{ color.hex }}"}'
+            hx-target="#conversion-status"
+            hx-swap="outerHTML"
+            @click="selectedForMerge = null"
+            class="btn btn-warning btn-xs shrink-0">
+            → Fusionner
+          </button>
+
+          <!-- Bouton supprimer couleur -->
+          <button
+            hx-post="{% url 'conversions:svg_remove_color' job.id %}"
+            hx-vals='{"color": "{{ color.hex }}"}'
+            hx-target="#conversion-status"
+            hx-swap="outerHTML"
+            class="btn btn-error btn-xs shrink-0"
+            title="Supprimer tous les éléments de cette couleur">
+            ✕
+          </button>
+        </div>
+
+        <!-- Ligne secondaire : aperçu fil Brother estimé -->
+        {% if color.brother_name %}
+        <div class="flex items-center gap-1.5 pl-6">
+          <span class="text-base-content/30 text-xs">→</span>
+          <span class="w-3 h-3 rounded-sm border border-base-300/50 shrink-0"
+                style="background-color: {{ color.brother_hex }};"></span>
+          <span class="text-xs text-base-content/40 truncate">{{ color.brother_name }}</span>
+          {% if color.collision %}
+          <span class="badge badge-warning badge-xs shrink-0" title="Deux couleurs SVG mapperont vers ce même fil">⚠ fusionné</span>
+          {% endif %}
+        </div>
+        {% endif %}
       </div>
       {% endfor %}
     </div>
@@ -144,4 +176,59 @@
       Valider et convertir en PES
     </button>
   </div>
+
+  <!-- Modal color picker palette Brother -->
+  {% if brother_palette %}
+  <div x-show="pickerOpen"
+       x-cloak
+       class="fixed inset-0 z-50 flex items-center justify-center p-4"
+       @keydown.escape.window="closePicker()">
+
+    <!-- Overlay -->
+    <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="closePicker()"></div>
+
+    <!-- Modal -->
+    <div class="relative bg-base-100 rounded-2xl shadow-xl w-full max-w-md max-h-[80vh] flex flex-col z-10"
+         @click.stop>
+      <div class="p-4 border-b border-base-200 flex items-center justify-between">
+        <div>
+          <h3 class="font-semibold text-sm">Choisir un fil Brother</h3>
+          <p class="text-xs text-base-content/50 mt-0.5" x-text="pickerTargetHex ? 'Remplacer ' + pickerTargetHex : ''"></p>
+        </div>
+        <button @click="closePicker()" class="btn btn-ghost btn-sm btn-circle">✕</button>
+      </div>
+
+      <!-- Filtre par nom -->
+      <div class="p-3 border-b border-base-200">
+        <input type="text"
+               x-model="pickerFilter"
+               placeholder="Filtrer par nom de fil…"
+               class="input input-bordered input-sm w-full"
+               @click.stop>
+      </div>
+
+      <!-- Grille de fils -->
+      <div class="overflow-y-auto p-3 flex-1">
+        <div class="grid grid-cols-2 gap-1">
+          {% for thread in brother_palette %}
+          <button
+            x-show="!pickerFilter || '{{ thread.name|lower }}'.includes(pickerFilter.toLowerCase())"
+            hx-post="{% url 'conversions:svg_change_color' job.id %}"
+            hx-vals='{"old_color": ""}'
+            hx-target="#conversion-status"
+            hx-swap="outerHTML"
+            :hx-vals='JSON.stringify({old_color: pickerTargetHex, new_color: "{{ thread.hex }}"})'
+            @click="closePicker()"
+            class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-base-200 transition-colors text-left">
+            <span class="w-5 h-5 rounded shrink-0 border border-base-300/50"
+                  style="background-color: {{ thread.hex }};"></span>
+            <span class="text-xs truncate">{{ thread.name }}</span>
+          </button>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
 </div>

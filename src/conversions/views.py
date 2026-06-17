@@ -42,7 +42,7 @@ class UnifiedUploadView(View):
 
         form = form_class(request.POST, request.FILES)
         if form.is_valid():
-            job = self._save_job(form)
+            job = self._save_job(form, request.user if request.user.is_authenticated else None)
             excluded_colors_raw = request.POST.get('excluded_colors', '').strip()
             if excluded_colors_raw:
                 job.conversion_metadata = {'excluded_colors': excluded_colors_raw}
@@ -84,7 +84,7 @@ class UnifiedUploadView(View):
         }.get(ext, 'unknown')
 
     @staticmethod
-    def _save_job(form) -> ConversionJob:
+    def _save_job(form, user=None) -> ConversionJob:
         job: ConversionJob = form.save(commit=False)
         for attr in ('_svg_original_stem', '_raster_original_stem', '_pdf_original_stem'):
             stem = getattr(form, attr, None)
@@ -95,6 +95,8 @@ class UnifiedUploadView(View):
             job.n_colors = form.cleaned_data['n_colors'] or 6
         if 'remove_background' in form.cleaned_data:
             job.remove_background = form.cleaned_data['remove_background']
+        if user is not None:
+            job.user = user
         job.save()
         return job
 
@@ -187,6 +189,17 @@ class UploadPDFView(CreateView):
         return reverse_lazy('conversions:detail', kwargs={'pk': self.object.id})
 
 
+class JobListView(View):
+    """Liste des conversions de l'utilisateur connecté."""
+
+    def get(self, request: HttpRequest) -> HttpResponse:
+        from django.contrib.auth.decorators import login_required
+        if not request.user.is_authenticated:
+            return redirect(f'/auth/login/?next=/conversions/mes-conversions/')
+        jobs = ConversionJob.objects.filter(user=request.user).order_by('-created_at')[:50]
+        return render(request, 'conversions/job_list.html', {'jobs': jobs})
+
+
 class JobDetailView(DetailView):
     model = ConversionJob
     template_name = 'conversions/detail.html'
@@ -207,14 +220,7 @@ class JobStatusView(View):
         from django.template.loader import render_to_string
 
         if job.status == job.Status.AWAITING_SVG_VALIDATION:
-            from .services.svg_utils import get_svg_colors_with_count
-            svg_path = Path(settings.MEDIA_ROOT) / job.vectorized_svg_file.name if job.vectorized_svg_file else None
-            svg_colors = get_svg_colors_with_count(svg_path) if svg_path and svg_path.exists() else []
-            return render_to_string(
-                'conversions/partials/conversion_status.html',
-                {'job': job, 'svg_colors': svg_colors},
-                request=request,
-            )
+            return _render_svg_editor_response(request, job).content.decode()
 
         estimated_seconds = None
         if job.status == job.Status.PROCESSING:
@@ -580,12 +586,31 @@ class JobDownloadView(View):
 def _render_svg_editor_response(request: HttpRequest, job: ConversionJob) -> HttpResponse:
     from django.template.loader import render_to_string
     from .services.svg_utils import get_svg_colors_with_count
+    from .services.thread_color import get_snap_preview, get_brother_palette
 
     svg_path = Path(settings.MEDIA_ROOT) / job.vectorized_svg_file.name if job.vectorized_svg_file else None
     svg_colors = get_svg_colors_with_count(svg_path) if svg_path and svg_path.exists() else []
+    snap_preview = get_snap_preview([c['hex'] for c in svg_colors])
+    snap_by_hex = {s['svg_hex']: s for s in snap_preview}
+    colors_with_snap = [
+        {
+            **c,
+            'brother_hex': snap_by_hex.get(c['hex'], {}).get('brother_hex', c['hex']),
+            'brother_name': snap_by_hex.get(c['hex'], {}).get('brother_name', ''),
+            'collision': snap_by_hex.get(c['hex'], {}).get('collision', False),
+        }
+        for c in svg_colors
+    ]
+    brother_palette = get_brother_palette()
+
     html = render_to_string(
         'conversions/partials/conversion_status.html',
-        {'job': job, 'svg_colors': svg_colors},
+        {
+            'job': job,
+            'svg_colors': svg_colors,
+            'colors_with_snap': colors_with_snap,
+            'brother_palette': brother_palette,
+        },
         request=request,
     )
     return HttpResponse(html, content_type='text/html')
@@ -636,6 +661,35 @@ class SvgMergeColorsView(View):
         svg_path = Path(_s.MEDIA_ROOT) / job.vectorized_svg_file.name
         if svg_path.exists():
             n = merge_svg_colors(svg_path, source, target)
+            if n > 0:
+                from django.utils import timezone
+                job.updated_at = timezone.now()
+                job.save(update_fields=['updated_at'])
+
+        return _render_svg_editor_response(request, job)
+
+
+class SvgChangeColorView(View):
+    """Remplace une couleur SVG par un fil Brother choisi par l'utilisateur."""
+
+    def post(self, request: HttpRequest, pk) -> HttpResponse:
+        from django.conf import settings as _s
+        from .services.svg_utils import change_svg_color
+        import re as _re
+
+        job = get_object_or_404(ConversionJob, pk=pk)
+        if job.status != ConversionJob.Status.AWAITING_SVG_VALIDATION or not job.vectorized_svg_file:
+            return HttpResponse(status=400)
+
+        old_color = request.POST.get('old_color', '').strip().lower()
+        new_color = request.POST.get('new_color', '').strip().lower()
+        _hex_re = _re.compile(r'^#[0-9a-f]{6}$')
+        if not _hex_re.match(old_color) or not _hex_re.match(new_color) or old_color == new_color:
+            return HttpResponse(status=400)
+
+        svg_path = Path(_s.MEDIA_ROOT) / job.vectorized_svg_file.name
+        if svg_path.exists():
+            n = change_svg_color(svg_path, old_color, new_color)
             if n > 0:
                 from django.utils import timezone
                 job.updated_at = timezone.now()

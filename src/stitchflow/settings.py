@@ -20,7 +20,12 @@ INSTALLED_APPS = [
     'django_vite',
     'core',
     'conversions',
+    'users',
 ]
+
+LOGIN_URL = '/auth/login/'
+LOGIN_REDIRECT_URL = '/conversions/'
+LOGOUT_REDIRECT_URL = '/'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',

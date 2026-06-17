@@ -241,60 +241,85 @@ Objectif : permettre d'ajuster le SVG vectorisé **après** la vectorisation PNG
 - [x] Le SVG modifié remplace `vectorized_svg_file` du job — même UUID, pas de nouveau job
 - [x] Prévisualisation live du SVG modifié avant validation (rechargement HTMX du SVG inline)
 
----
+### 8d — Finitions éditeur & corrections qualité ✅
 
-## Phase 9 — Authentification & multi-utilisateurs
+Objectif : solidifier la base avant la beta. Corriger le bug couleurs, éliminer les frictions restantes, enrichir l'éditeur SVG avec la vraie palette de fils.
 
-Objectif : ouvrir l'outil à plusieurs utilisateurs avec des comptes distincts. Prérequis pour le SaaS.
-
-> **Pourquoi après l'éditeur SVG** : les fonctionnalités de correction (phases 6-8) doivent être stables avant d'y attacher des comptes. Sinon les migrations de données deviennent complexes.
-
-- [ ] Auth Django basique : `django.contrib.auth` + formulaires login/register/logout
-- [ ] `ConversionJob.user = ForeignKey(User, null=True)` — ownership des jobs
-- [ ] Accès restreint : un utilisateur ne voit que ses propres jobs
-- [ ] Sessions anonymes tolérées (jobs sans user) — transition douce
-- [ ] Page profil minimale : email, nb conversions, quota restant
+- [x] **Bug fix prioritaire** : couleur disparaissant entre la prévisualisation (3 couleurs) et le PES final (2 couleurs) — cause identifiée : deux couleurs SVG proches mappent vers le même fil Brother après snap. Correction UX : preview du fil Brother estimé + badge "⚠ fusionné" affiché dans l'éditeur pour chaque couleur — `get_snap_preview()` dans `thread_color.py`
+- [x] **Texte → courbes automatique** : `convert_text_to_paths(svg_path)` dans `svg_utils.py` — appel `inkscape --actions=select-all;object-to-path --export-type=svg` avant `validate_svg_content()` dans `tasks.py`. Syntaxe Inkscape 1.4.4+ (action `object-to-path`, pas `ObjectToPath`)
+- [x] **Color picker palette Brother** dans l'éditeur SVG : bouton 🎨 par couleur → modal DaisyUI avec les ~60 fils Brother (filtrable par nom) → `SvgChangeColorView` + endpoint `POST /conversions/<id>/svg/change-color/` + `change_svg_color()` dans `svg_utils.py`
+- [x] Afficher le nom du fil Brother le plus proche de chaque couleur SVG dans l'éditeur — `get_brother_palette()` + `get_snap_preview()` injectés dans le contexte éditeur via `_render_svg_editor_response()`
 
 ---
 
-## Phase 10 — Dashboard & historique
+## Phase 9 — Authentification & comptes utilisateurs ✅
 
-Objectif : donner à l'utilisateur une vue sur ses conversions passées et ses statistiques.
+Objectif : ouvrir l'outil à plusieurs utilisateurs avec des comptes distincts. Prérequis pour la beta fermée et le SaaS.
+
+> C'est la phase la plus courte techniquement (~1 semaine) mais elle débloque tout : historique personnel, quota, paiement futur.
+
+- [x] Auth Django basique : app `users/` avec `LoginView`, `SignUpView`, `LogoutView`, `ProfileView` — email comme identifiant (username=email), compte activé immédiatement
+- [x] Formulaires : `EmailLoginForm` (lookup User par email + authenticate), `SignUpForm` (validation email unique + mdp), `ProfileForm` (prénom/nom)
+- [x] Routes : `/auth/login/`, `/auth/register/`, `/auth/logout/`, `/auth/profile/`
+- [x] `ConversionJob.user = ForeignKey(User, null=True, on_delete=SET_NULL)` — ownership des jobs, migration `0007_add_user_to_conversion_job`
+- [x] Jobs anonymes tolérés : vues détail accessibles par UUID sans auth, liste protégée
+- [x] Page "Mes conversions" (`/conversions/mes-conversions/`) : liste des jobs du user connecté avec aperçu + statut — `JobListView`
+- [x] Navbar mise à jour : avatar dropdown (Mes conversions / Profil / Déconnexion) si connecté, boutons Connexion + S'inscrire sinon
+- [x] `settings.py` : `LOGIN_URL`, `LOGIN_REDIRECT_URL`, `LOGOUT_REDIRECT_URL` configurés
+
+---
+
+## Phase 10 — Dashboard & historique (beta)
+
+Objectif : donner à l'utilisateur une vue sur ses conversions passées. Nécessaire pour la beta — l'utilisatrice doit pouvoir retrouver ses fichiers convertis.
+
+> **Objectif beta** : valider avec l'utilisatrice cible que StitchFlow remplace ses conversions simples à €10/unité.
 
 - [ ] Liste paginée des jobs (`/conversions/history/`) avec filtres statut + format + date
 - [ ] Re-conversion depuis un job existant (re-uploader le même fichier avec nouveaux paramètres)
-- [ ] Comparaison côte à côte de deux conversions (score, fils, points)
-- [ ] Export CSV des métadonnées de conversion (pour analyse)
-- [ ] Stats globales : score moyen par format, temps moyen, formats les plus utilisés
+- [ ] Téléchargement du PES depuis l'historique (lien persistant par job)
+- [ ] Score qualité visible dans l'historique — permet de repérer les conversions à refaire
+- [ ] Export CSV des métadonnées (pour analyse usage beta)
 
 ---
 
-## Phase 11 — SaaS & monétisation
+## Phase 11 — Éditeur broderie avancé
 
-Objectif : transformer l'outil en service commercial. Le marché est réel (gap entre services manuels $10-75/24h et aucun automatique sérieux).
+Objectif : passer de l'éditeur léger (supprimer/fusionner/recolorer) à un contrôle professionnel sur le rendu broderie. Développer en fonction des retours de la beta.
 
-> **Positionnement** : "Conversion automatique instantanée pour logos simples et écussons — pas pour photos complexes". Prix cible : €2-5/conversion.
+> À prioriser par ordre d'impact décroissant : ce qui cause le plus d'erreurs ou de frustration d'abord.
+
+- [ ] **Réordonner les couches de broderie** : drag-and-drop des couleurs pour changer l'ordre de broderie (quelle zone est cousue en premier)
+- [ ] **Choix du type de point** : satin (contours fins, texte) vs remplissage (zones pleines) vs point courant — par zone/couleur — nécessite params Ink/Stitch
+- [ ] **Prévisualisation animée** : simulation stitch-par-stitch dans le navigateur (JS + pyembroidery data) — voir la broderie se dessiner avant lancement machine
+- [ ] **Densité par zone** : régler la densité des points couleur par couleur — utile pour tissus fins vs épais
+- [ ] **Historique undo/redo** des modifications dans l'éditeur
+- [ ] Éditeur visuel full-featured si besoin (SVG.js ou Fabric.js) — évaluer après retours beta
+
+---
+
+## Phase 12 — SaaS & monétisation
+
+Objectif : transformer l'outil en service commercial. La beta a validé la valeur, il faut maintenant la monétiser.
+
+> **Positionnement** : €2–5/conversion vs €10 chez un prestataire humain. Cible : artisans et ateliers de broderie indépendants.
 
 - [ ] Système de crédits : X conversions/mois selon le plan
-- [ ] Plans tarifaires (ex: Free 3/mois, Pro €9/mois illimité, Pay-as-you-go €3/conversion)
+- [ ] Plans tarifaires (ex : Free 3/mois, Pro €9/mois illimité, Pay-as-you-go €3/conversion)
 - [ ] Paiement Stripe (checkout + webhooks)
 - [ ] Migration PostgreSQL + stockage S3 (media)
 - [ ] Docker Compose + déploiement VPS (Hetzner, Fly.io, Railway)
 - [ ] CI/CD GitHub Actions (tests + lint + deploy auto)
-- [ ] Page marketing / landing page (bénéfices vs services manuels : instantané, pas 24h d'attente)
-- [ ] API REST pour intégrations tierces (ateliers de broderie, e-commerce)
+- [ ] Page marketing / landing page (avant/après, témoignage beta, comparaison vs prestataire humain)
 
 ---
 
-## Phase 12 — Éditeur SVG complet (long terme)
+## Phase 13 — Multi-machines & détection de complexité
 
-Objectif : éditeur professionnel dans le navigateur pour les utilisateurs avancés qui veulent contrôle total.
+Objectif : étendre le marché au-delà de la machine Brother, et être honnête sur les limites de l'outil.
 
-- [ ] Éditeur visuel full-featured (SVG.js ou Fabric.js)
-- [ ] Changer les couleurs de fil depuis la palette Brother (~60 fils)
-- [ ] Changer l'ordre de broderie (drag-and-drop des couches)
-- [ ] Modifier le type de point (satin, remplissage, courant) — nécessite intégration Ink/Stitch params
-- [ ] Modifier la densité par zone
-- [ ] Prévisualisation animée stitch-par-stitch (simulation de broderie en JS)
-- [ ] Historique des modifications (undo/redo)
-- [ ] Compatibilité multi-machines : DST, JEF, VP3, HUS — via pyembroidery
+- [ ] **Détection de complexité** : analyser le design avant conversion et afficher "Ce design est probablement trop complexe pour une conversion automatique de qualité" — recommander un prestataire humain pour les cas hors scope
+- [ ] Profil machine utilisateur : l'utilisateur renseigne sa machine → StitchFlow adapte les contraintes (zone de broderie, nb d'aiguilles, format natif)
+- [ ] Multi-formats d'export : DST (universel Tajima), JEF (Janome), VP3 (Viking/Husqvarna) — via pyembroidery déjà intégré
+- [ ] API REST pour intégrations tierces (ateliers de broderie, e-commerce Shopify/WooCommerce)
+- [ ] Support Brother multi-modèles (contraintes différentes selon le modèle)

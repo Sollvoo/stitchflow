@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="min-h-[70vh] flex items-center justify-center px-4 py-12">
+  <div class="card bg-base-100 shadow-lg w-full max-w-sm">
+    <div class="card-body gap-5">
+
+      <div class="text-center">
+        <div class="text-4xl mb-2">🧵</div>
+        <h1 class="text-xl font-bold">Connexion</h1>
+        <p class="text-sm text-base-content/50 mt-1">Accédez à vos conversions</p>
+      </div>
+
+      {% if form.non_field_errors %}
+      <div class="alert alert-error text-sm py-2">
+        {% for error in form.non_field_errors %}{{ error }}{% endfor %}
+      </div>
+      {% endif %}
+
+      <form method="post" class="flex flex-col gap-4">
+        {% csrf_token %}
+
+        <label class="form-control">
+          <div class="label pb-1"><span class="label-text text-sm font-medium">Email</span></div>
+          <input type="email" name="email" value="{{ form.email.value|default:'' }}"
+                 placeholder="votre@email.com"
+                 autocomplete="email"
+                 class="input input-bordered {% if form.email.errors %}input-error{% endif %}">
+          {% if form.email.errors %}
+          <div class="label"><span class="label-text-alt text-error">{{ form.email.errors.0 }}</span></div>
+          {% endif %}
+        </label>
+
+        <label class="form-control">
+          <div class="label pb-1"><span class="label-text text-sm font-medium">Mot de passe</span></div>
+          <input type="password" name="password"
+                 placeholder="••••••••"
+                 autocomplete="current-password"
+                 class="input input-bordered {% if form.password.errors %}input-error{% endif %}">
+          {% if form.password.errors %}
+          <div class="label"><span class="label-text-alt text-error">{{ form.password.errors.0 }}</span></div>
+          {% endif %}
+        </label>
+
+        <button type="submit" class="btn btn-primary mt-1">Se connecter</button>
+      </form>
+
+      <div class="divider text-xs text-base-content/30">ou</div>
+
+      <p class="text-center text-sm text-base-content/60">
+        Pas encore de compte ?
+        <a href="{% url 'users:register' %}" class="link link-primary font-medium">S'inscrire</a>
+      </p>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

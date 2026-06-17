@@ -1,6 +1,7 @@
 <div id="svg-suggestions"
+     data-colors='{{ color_swatches_json }}'
      x-data="{
-       colors: {{ color_swatches_json|safe }},
+       colors: [],
        excludedColors: [],
        toggleExclude(hex) {
          if (this.excludedColors.includes(hex))
@@ -10,7 +11,7 @@
          $dispatch('excluded-colors-changed', { value: this.excludedColors });
        }
      }"
-     x-init="$dispatch('svg-analyzed', { width: {{ suggested_width }} })">
+     x-init="colors = JSON.parse($el.dataset.colors); $dispatch('svg-analyzed', { width: {{ suggested_width }} })">
 
   {% if small_paths_count %}
   <div role="alert" class="alert alert-error py-2 px-3 text-xs gap-2 mt-2">

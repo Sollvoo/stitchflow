@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 py-10">
+
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-xl font-bold">Mes conversions</h1>
+    <a href="{% url 'conversions:upload' %}" class="btn btn-primary btn-sm gap-1">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+      </svg>
+      Nouvelle conversion
+    </a>
+  </div>
+
+  {% if jobs %}
+  <div class="flex flex-col gap-3">
+    {% for job in jobs %}
+    <a href="{% url 'conversions:detail' job.id %}"
+       class="card bg-base-100 shadow-sm hover:shadow-md transition-shadow border border-base-200">
+      <div class="card-body py-3 px-4 flex-row items-center gap-4">
+
+        <!-- Aperçu ou icône format -->
+        <div class="w-12 h-12 rounded-lg bg-base-200 flex items-center justify-center shrink-0 overflow-hidden">
+          {% if job.preview_file %}
+          <img src="{{ job.preview_file.url }}" class="w-full h-full object-contain" alt="aperçu">
+          {% else %}
+          <span class="text-xl">
+            {% if job.source_format == 'svg' %}🖊️
+            {% elif job.source_format == 'pdf' %}📄
+            {% else %}🖼️{% endif %}
+          </span>
+          {% endif %}
+        </div>
+
+        <div class="flex-1 min-w-0">
+          <p class="font-medium text-sm truncate">
+            {{ job.original_filename|default:"Sans nom" }}{% if job.original_filename %}.{{ job.source_format }}{% endif %}
+          </p>
+          <p class="text-xs text-base-content/50 mt-0.5">{{ job.created_at|date:"d/m/Y à H\hi" }}</p>
+        </div>
+
+        <div>
+          {% if job.status == 'completed' %}
+          <span class="badge badge-success badge-sm">Terminé</span>
+          {% elif job.status == 'failed' %}
+          <span class="badge badge-error badge-sm">Échec</span>
+          {% elif job.status == 'awaiting_svg_validation' %}
+          <span class="badge badge-info badge-sm">À valider</span>
+          {% else %}
+          <span class="badge badge-ghost badge-sm">En cours</span>
+          {% endif %}
+        </div>
+
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+
+  {% else %}
+  <div class="card bg-base-100 shadow-sm border border-base-200">
+    <div class="card-body items-center text-center py-16 gap-4">
+      <div class="text-5xl">🧵</div>
+      <h2 class="text-lg font-semibold">Aucune conversion pour l'instant</h2>
+      <p class="text-sm text-base-content/50">Uploadez un fichier SVG, PNG ou PDF pour commencer.</p>
+      <a href="{% url 'conversions:upload' %}" class="btn btn-primary btn-sm mt-2">
+        Démarrer une conversion
+      </a>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

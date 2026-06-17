@@ -23,6 +23,7 @@ def _run_svg_to_pes_pipeline(job, source_svg_path: Path) -> None:
         force_max_svg_colors,
         group_paths_by_color,
         normalize_stroke_only_paths,
+        convert_text_to_paths,
         _count_svg_unique_fills,
     )
     from .services.validation import validate_svg_content
@@ -41,6 +42,10 @@ def _run_svg_to_pes_pipeline(job, source_svg_path: Path) -> None:
                 n_excl = remove_excluded_colors_from_svg(source_svg_path, _excl_hexes)
                 if n_excl > 0:
                     logger.info('[excluded] %d éléments supprimés (%s) pour job %s', n_excl, _excl_hexes, job.id)
+
+        n_text = convert_text_to_paths(source_svg_path)
+        if n_text > 0:
+            logger.info('[text2path] %d texte(s) convertis en chemins pour job %s', n_text, job.id)
 
         validate_svg_content(source_svg_path)
 

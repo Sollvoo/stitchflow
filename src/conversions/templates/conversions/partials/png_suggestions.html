@@ -1,6 +1,7 @@
 <div id="png-suggestions"
+     data-colors='{{ color_swatches_json }}'
      x-data="{
-       colors: {{ color_swatches_json|safe }},
+       colors: [],
        maxColors: {{ n_colors }},
        excludedColors: [],
        toggleExclude(hex) {
@@ -12,7 +13,7 @@
        }
      }"
      @ncolors-changed.window="maxColors = $event.detail.value"
-     x-init="$dispatch('png-analyzed', { nColors: {{ n_colors }}, width: {{ suggested_width }}, removeBg: {{ has_white_background|yesno:'true,false' }} })">
+     x-init="colors = JSON.parse($el.dataset.colors); $dispatch('png-analyzed', { nColors: {{ n_colors }}, width: {{ suggested_width }}, removeBg: {{ has_white_background|yesno:'true,false' }} })">
 
   {% if low_dpi_warning %}
   <div role="alert" class="alert alert-warning py-2 px-3 text-xs gap-2 mt-2">

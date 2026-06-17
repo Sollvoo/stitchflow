@@ -4,7 +4,7 @@
 
 StitchFlow est une application web Django permettant de convertir des fichiers SVG, PNG, JPEG, WebP et PDF en fichiers de broderie `.PES` via Ink/Stitch CLI.
 
-**État actuel (juin 2025) :** Phases 1–6 terminées. Pipeline complet opérationnel. Phase 7 (assistant pré-conversion) et Phase 8 (éditeur SVG) à démarrer.
+**État actuel (juin 2025) :** Phases 1–8 terminées. Pipeline complet + assistant pré-conversion + éditeur SVG léger opérationnels. Phase 8d (finitions éditeur + bug couleurs) en cours.
 
 ## Stack technique
 
@@ -260,7 +260,10 @@ StitchFlow/
 │   └── commands/
 │       └── commit.md
 ├── docs/
-│   └── pipeline-technique.md    ← documentation complète du pipeline (MAINTENIR À JOUR)
+│   ├── VISION.md                ← vision produit et positionnement
+│   ├── ROADMAP.md               ← roadmap phases 1-13
+│   ├── pipeline-technique.md    ← documentation complète du pipeline (MAINTENIR À JOUR)
+│   └── converter-quality.md     ← notes qualité convertisseur
 ├── tests/
 │   ├── manual/                  ← fichiers source pour tests manuels via l'UI
 │   │   ├── svg/                 ← 9 SVGs numérotés 01-09 (+ 05b)
@@ -279,7 +282,6 @@ StitchFlow/
 ├── .env.example
 ├── .gitignore
 ├── CLAUDE.md                    ← ce fichier
-├── ROADMAP.md
 ├── pyproject.toml
 ├── db.sqlite3                   ← base de données locale (ignorée git)
 └── media/                       ← fichiers uploadés (ignorés git)
@@ -318,7 +320,7 @@ Fichier principal : `conversions/tasks.py` → `process_conversion_job()`
 ## Règle de mise à jour de la Roadmap
 
 **Obligatoire à chaque fin de session de développement :**
-- Cocher `[x]` dans `ROADMAP.md` tous les éléments terminés dans la session
+- Cocher `[x]` dans `docs/ROADMAP.md` tous les éléments terminés dans la session
 - Ajouter les nouvelles fonctionnalités décidées (même non implémentées)
 - Ne jamais laisser la roadmap en décalage avec l'état réel du code
 - Si une Phase est entièrement cochée, ajouter ✅ à son titre

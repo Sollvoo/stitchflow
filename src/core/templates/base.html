@@ -17,13 +17,39 @@
         <span class="font-bold text-xl text-primary tracking-tight">StitchFlow</span>
       </a>
     </div>
-    <div class="navbar-end px-4">
+    <div class="navbar-end px-4 gap-2">
       <a href="/conversions/" class="btn btn-primary btn-sm gap-2">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
         </svg>
         Nouvelle conversion
       </a>
+
+      {% if user.is_authenticated %}
+      <div class="dropdown dropdown-end">
+        <div tabindex="0" role="button" class="btn btn-ghost btn-sm btn-circle avatar placeholder">
+          <div class="bg-primary/10 text-primary rounded-full w-8">
+            <span class="text-sm font-semibold">{{ user.first_name|slice:":1"|upper|default:user.email|slice:":1"|upper }}</span>
+          </div>
+        </div>
+        <ul tabindex="0" class="menu menu-sm dropdown-content bg-base-100 rounded-box z-[60] mt-1 w-52 p-2 shadow-lg border border-base-200">
+          <li class="menu-title text-xs px-2 py-1">
+            <span class="truncate">{{ user.email }}</span>
+          </li>
+          <li><a href="{% url 'conversions:job_list' %}">Mes conversions</a></li>
+          <li><a href="{% url 'users:profile' %}">Profil</a></li>
+          <li>
+            <form method="post" action="{% url 'users:logout' %}" class="p-0">
+              {% csrf_token %}
+              <button type="submit" class="text-error w-full text-left">Déconnexion</button>
+            </form>
+          </li>
+        </ul>
+      </div>
+      {% else %}
+      <a href="{% url 'users:login' %}" class="btn btn-ghost btn-sm">Connexion</a>
+      <a href="{% url 'users:register' %}" class="btn btn-outline btn-sm">S'inscrire</a>
+      {% endif %}
     </div>
   </div>
 
