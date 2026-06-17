@@ -274,6 +274,14 @@ Objectif : ouvrir l'outil à plusieurs utilisateurs avec des comptes distincts. 
 Objectif : donner à l'utilisateur une vue sur ses conversions passées. Nécessaire pour la beta — l'utilisatrice doit pouvoir retrouver ses fichiers convertis.
 
 > **Objectif beta** : valider avec l'utilisatrice cible que StitchFlow remplace ses conversions simples à €10/unité.
+> **Stratégie complète** : voir `docs/strategie-marketing.md`
+
+### Prérequis avant d'ouvrir la beta
+
+- [ ] **Conversation avec l'utilisatrice beta** : lui expliquer le projet commercial, valider le prix (€3/conv.), sonder son réseau — à faire avant tout lancement public (voir `docs/strategie-marketing.md §2`)
+- [ ] **Landing page** `/landing/` avec liste d'attente email — titre, screenshot interface preview fils, formulaire email simple (voir `docs/strategie-marketing.md §4`)
+
+### Dashboard
 
 - [ ] Liste paginée des jobs (`/conversions/history/`) avec filtres statut + format + date
 - [ ] Re-conversion depuis un job existant (re-uploader le même fichier avec nouveaux paramètres)
@@ -302,15 +310,39 @@ Objectif : passer de l'éditeur léger (supprimer/fusionner/recolorer) à un con
 
 Objectif : transformer l'outil en service commercial. La beta a validé la valeur, il faut maintenant la monétiser.
 
-> **Positionnement** : €2–5/conversion vs €10 chez un prestataire humain. Cible : artisans et ateliers de broderie indépendants.
+> **Positionnement** : €3/conversion recommandé (vs €10 prestataire). Cible : artisanes et ateliers indépendants.
+> **Stratégie complète** : voir `docs/strategie-marketing.md`
 
-- [ ] Système de crédits : X conversions/mois selon le plan
-- [ ] Plans tarifaires (ex : Free 3/mois, Pro €9/mois illimité, Pay-as-you-go €3/conversion)
-- [ ] Paiement Stripe (checkout + webhooks)
+### Modèle tarifaire (affiné juin 2025)
+
+| Plan | Prix | Quota | Cible |
+|------|------|-------|-------|
+| Free | €0 | 3 conversions/mois | Discovery |
+| Starter | €9/mois | 15 conversions/mois | Artisane occasionnelle |
+| Pro | €19/mois | 50 conversions/mois | Artisane régulière |
+| Pay-as-you-go | €3/conversion | Illimité à l'unité | Usage ponctuel |
+
+> Pas de plan illimité à prix fixe : les coûts Celery + Ink/Stitch scalent linéairement avec l'usage.
+
+### Essai anonyme sans inscription
+
+- [ ] 2 conversions anonymes par session (cookie + fallback IP via Redis) — zéro friction d'entrée avant compte
+- [ ] Affichage "Il vous reste X conversions gratuites" → CTA inscription naturel
+
+### Paiement et infrastructure
+
+- [ ] Système de quotas mensuels par plan (`UserQuota` model, reset le 1er du mois)
+- [ ] Paiement Stripe (checkout + webhooks `invoice.paid`, `customer.subscription.deleted`)
+- [ ] Page upgrade en compte : comparaison des plans avec CTA Stripe checkout
 - [ ] Migration PostgreSQL + stockage S3 (media)
-- [ ] Docker Compose + déploiement VPS (Hetzner, Fly.io, Railway)
+- [ ] Docker Compose + déploiement VPS (Hetzner, Fly.io, ou Railway)
 - [ ] CI/CD GitHub Actions (tests + lint + deploy auto)
-- [ ] Page marketing / landing page (avant/après, témoignage beta, comparaison vs prestataire humain)
+
+### Marketing
+
+- [ ] Landing page complète (avant/après, preview fils, témoignage beta, comparaison vs prestataire humain)
+- [ ] Ouverture inscription publique
+- [ ] Présence passive sur r/embroidery + groupes Facebook broderie FR (après validation beta)
 
 ---
 
