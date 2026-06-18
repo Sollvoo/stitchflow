@@ -179,6 +179,42 @@ TESTS: list[dict[str, Any]] = [
         'target_width_mm': 80,
         'description': 'PDF scanné (raster)',
     },
+    {
+        'test_id': 'T13',
+        'file': 'svg/08-texte-fin-contours.svg',
+        'format': 'svg',
+        'n_colors': None,
+        'remove_bg': False,
+        'target_width_mm': 60,
+        'description': 'SVG texte très fin en contours — Hard (lisibilité machine)',
+    },
+    {
+        'test_id': 'T14',
+        'file': 'pdf/test-vectoriel-complexe.pdf',
+        'format': 'pdf',
+        'n_colors': 6,
+        'remove_bg': False,
+        'target_width_mm': 120,
+        'description': 'PDF vectoriel complexe grand format — Hard',
+    },
+    {
+        'test_id': 'T15',
+        'file': 'png/11-logo-transparent-alpha.png',
+        'format': 'png',
+        'n_colors': 4,
+        'remove_bg': False,
+        'target_width_mm': 80,
+        'description': 'Logo PNG canal alpha (RGBA 600x400) — Medium',
+    },
+    {
+        'test_id': 'T16',
+        'file': 'pdf/logo gravo clés.pdf',
+        'format': 'pdf',
+        'n_colors': 6,
+        'remove_bg': False,
+        'target_width_mm': 100,
+        'description': 'PDF complexe lourd 1.37MB — Hard',
+    },
 ]
 
 

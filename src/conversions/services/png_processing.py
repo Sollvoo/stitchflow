@@ -321,8 +321,9 @@ def _consolidate_svg_colors(svg_path: Path, n_colors: int) -> None:
         h: rgb_to_lab(*hex_to_rgb(h)) for h in fill_counts
     }
 
-    # Clustering par distance CIE Lab (seuil 22 ≈ couleurs proches perceptuellement)
-    _LAB_CLUSTER_THRESH = 22.0
+    # Clustering par distance CIE Lab — seuil resserré pour les designs à haute
+    # couleur (n > 8) afin de préserver les nuances fines entre couleurs proches.
+    _LAB_CLUSTER_THRESH = 15.0 if n_colors > 8 else 22.0
     colors_by_count = sorted(fill_counts.items(), key=lambda x: -x[1])
     clusters: list[
         tuple[tuple[int, int, int], tuple[float, float, float], list[str]]
@@ -413,7 +414,7 @@ def _vectorize_vtracer_cli(
             "--gradient_step",
             str(gradient_step),
             "--corner_threshold",
-            "60",
+            "80" if n_colors <= 3 else "50" if n_colors > 8 else "60",
             "--segment_length",
             "4.0",
             "--splice_threshold",

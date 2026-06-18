@@ -165,6 +165,13 @@ def _score_color_fidelity(
     distance_score = max(0, 100 - int(mean_dist * 1.2))
     score = int(distance_score * (0.4 + 0.6 * ratio))
 
+    # Si le snap a bien fonctionné (ratio >= 0.8) mais que la distance résiduelle
+    # vient d'une limite physique de la palette Brother (mean_dist <= 35),
+    # appliquer un plancher à 70 — on ne pénalise pas le convertisseur pour
+    # l'absence d'un fil exact dans la palette.
+    if ratio >= 0.8 and mean_dist <= 35:
+        score = max(score, 70)
+
     fils = f"{len(pes_colors)}/{len(svg_colors)} fil(s)"
     if score >= 85:
         msg = f"Couleurs fidèles (Δ Lab moyen {mean_dist:.1f}, {fils})"
@@ -335,6 +342,10 @@ def _compute_quality_score(
         # Resserré : <2% (était <3%)
         j_score = 80
         j_msg = f"{jump_count} sauts ({jump_ratio*100:.1f}%) — normal"
+    elif jump_ratio < 0.04:
+        # PR1050X équipée coupe-fil auto : 2-4% acceptables sur designs complexes
+        j_score = 65
+        j_msg = f"{jump_count} sauts ({jump_ratio*100:.1f}%) — modéré, acceptable machine pro"
     elif jump_ratio < 0.08:
         j_score = 45
         j_msg = (
