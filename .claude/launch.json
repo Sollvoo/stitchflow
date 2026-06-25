@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "django",
+      "runtimeExecutable": "/Users/hugobonnet/Developer/StitchFlow/.venv/bin/python",
+      "runtimeArgs": ["/Users/hugobonnet/Developer/StitchFlow/src/manage.py", "runserver", "8001", "--noreload"],
+      "port": 8001
+    }
+  ]
+}

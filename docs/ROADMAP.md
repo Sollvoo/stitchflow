@@ -269,7 +269,7 @@ Objectif : ouvrir l'outil à plusieurs utilisateurs avec des comptes distincts. 
 
 ---
 
-## Phase 10 — Dashboard & historique (beta)
+## Phase 10 — Dashboard & historique (beta) ✅
 
 Objectif : donner à l'utilisateur une vue sur ses conversions passées. Nécessaire pour la beta — l'utilisatrice doit pouvoir retrouver ses fichiers convertis.
 
@@ -281,13 +281,20 @@ Objectif : donner à l'utilisateur une vue sur ses conversions passées. Nécess
 - [ ] **Conversation avec l'utilisatrice beta** : lui expliquer le projet commercial, valider le prix (€3/conv.), sonder son réseau — à faire avant tout lancement public (voir `docs/strategie-marketing.md §2`)
 - [ ] **Landing page** `/landing/` avec liste d'attente email — titre, screenshot interface preview fils, formulaire email simple (voir `docs/strategie-marketing.md §4`)
 
-### Dashboard
+### Auth & sécurité ✅
+- [x] Réinitialisation de mot de passe par email (`/auth/password-reset/`) — Django PasswordResetView + Gmail SMTP
+- [x] Changement de mot de passe en étant connecté (`/auth/password-change/`)
+- [x] Changement d'email avec confirmation mot de passe (`/auth/change-email/`)
+- [x] Corrections UI auth : prénom/nom avant email dans l'inscription, lien "Mot de passe oublié ?" dans login
+- [x] Navbar connectée : bouton "Prénom ▾" avec dropdown lisible (email + Mes conversions + Profil + Déconnexion)
+- [x] Page profil restructurée : section Informations + section Sécurité (email + mot de passe)
 
-- [ ] Liste paginée des jobs (`/conversions/history/`) avec filtres statut + format + date
-- [ ] Re-conversion depuis un job existant (re-uploader le même fichier avec nouveaux paramètres)
-- [ ] Téléchargement du PES depuis l'historique (lien persistant par job)
-- [ ] Score qualité visible dans l'historique — permet de repérer les conversions à refaire
-- [ ] Export CSV des métadonnées (pour analyse usage beta)
+### Dashboard ✅
+- [x] Liste paginée des jobs (`/conversions/history/`) avec filtres statut + format + date (12 par page)
+- [x] Re-conversion depuis un job existant (`POST /conversions/<uuid>/reconvert/`) — copie le fichier source + relance le pipeline
+- [x] Téléchargement du PES depuis l'historique (menu contextuel par job)
+- [x] Score qualité visible dans l'historique — badge coloré ★ XX/100 par job terminé
+- [x] Export CSV des métadonnées (`/conversions/history/export-csv/`) — ID, fichier, format, statut, score, points, fils, largeur, date
 
 ---
 

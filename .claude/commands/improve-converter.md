@@ -3,34 +3,55 @@
 Tu es un ingénieur Python senior spécialisé dans la broderie numérique et les pipelines de conversion de fichiers.
 
 **Ce que fait cette commande :**
-1. Lit l'état actuel depuis `docs/converter-quality.md` (score de référence de la session précédente)
-2. Lance un benchmark complet sur 12 cas de test pour obtenir le score "avant" réel
-3. Analyse les résultats avec `/sequential-thinking` pour identifier les 3 meilleurs fixes (ROI = impact × tests affectés / effort)
-4. Applique les 3 fixes en 3 itérations mesurées (benchmark partiel après chaque fix)
-5. Met à jour `docs/converter-quality.md` avec les résultats de cette session
-6. Affiche un rapport final : score avant / score après / score visé
+1. Pose 3 questions utilisateur (priorité session, rythme nouveaux tests)
+2. Lit l'état actuel depuis `docs/converter-memory.md` (section LIRE EN PREMIER)
+3. Lance un benchmark complet pour obtenir le score "avant" réel
+4. Analyse les résultats avec `/sequential-thinking` pour identifier les meilleurs fixes (ROI = impact × tests affectés / effort)
+5. Applique les fixes en itérations mesurées (benchmark partiel après chaque fix)
+6. Met à jour `docs/converter-memory.md` et affiche un rapport final
 
 ---
 
 ## IMPORTANT — Mode plan obligatoire
 
 Cette commande est **toujours exécutée en mode plan** (`/plan`). Avant tout changement de code :
-- Présente le plan complet des 3 fixes avec justification ROI
+- Présente le plan complet des fixes avec justification ROI
 - Attends la validation explicite avant d'implémenter quoi que ce soit
 
 ---
 
-## Phase 0 — Lecture de l'état actuel
+## Phase 0a — Questions utilisateur (OBLIGATOIRE EN PREMIER)
 
-### 0a. Lire docs/converter-quality.md
+Avant toute analyse, utiliser `AskUserQuestion` pour orienter la session :
 
-Extraire depuis ce fichier :
-- Le **score de référence** (dernière ligne du tableau — colonne "Score moyen après")
-- Les **problèmes connus non résolus** (section "Problèmes connus non résolus")
-- Les **prochaines priorités** listées (section "Prochaines priorités")
+**Q1 — Priorité de cette session ?**
+- "Fixes de calibration scoring — améliorer les métriques" (Recommandé si session S7, S10...)
+- "Amélioration pipeline — réduire jumps / améliorer coverage"
+- "Nouveaux tests difficiles — élargir le benchmark"
+- "Les trois (session longue)"
+
+**Q2 — Rythme d'ajout de nouveaux tests durs ?**
+- "Progressif — 2 tests maximum" (Recommandé)
+- "Aucun nouveau test — se concentrer sur les tests existants"
+- "Agressif — 3 à 5 nouveaux tests"
+
+**Note audit scoring :** si la session est numérotée S7, S10, S13... (numéro divisible par 3) → **audit calibration OBLIGATOIRE** des seuils de scoring dans `previews.py` (tous les 3 sessions pour éviter de s'entraîner sur de fausses métriques).
+
+---
+
+## Phase 0b — Lecture de l'état actuel
+
+### Lire docs/converter-memory.md
+
+Extraire depuis la section **[LIRE EN PREMIER]** :
+- Le **score de référence** (Score actuel)
+- Les **tests anti-régression** (T01 min, T08 = 100 obligatoire)
+- Les **niveaux de difficulté** des tests
+- Les **prochaines priorités**
+- **Ce qui a été tenté et n'a PAS fonctionné** (ne pas retenter ces approches)
 - Le numéro de la dernière session (pour incrémenter)
 
-### 0b. Lancer le benchmark baseline
+### Lancer le benchmark baseline
 
 ```bash
 source /Users/hugobonnet/Developer/StitchFlow/.venv/bin/activate
@@ -68,14 +89,14 @@ Utilise `/sequential-thinking` (6 à 8 pensées) pour analyser les résultats du
 **Architecture du score (référence pour l'analyse) :**
 
 ```
-Critères pondérés (previews.py) :
-  - threads        18%  — nb de couleurs (≤10 = 100, 11-15 = 60, etc.)
-  - stitches       18%  — nb de points (seuils : <500=20, <1500=60, <50000=100, ...)
-  - dimensions     14%  — taille broderie dans la zone Brother (360×200mm)
-  - jumps          10%  — ratio sauts/points (< 0.05 = 100)
-  - density        10%  — pts/mm² (0.3–0.7 = 100, < 0.1 = 0)
-  - color_fidelity 18%  — ΔLab entre couleur demandée et fil Brother le plus proche
-  - coverage       12%  — ratio couleurs obtenues / demandées
+Critères pondérés (previews.py) — seuils exacts au 2026-06-17 :
+  - threads 18%       — ≤7=100, ≤10=80, ≤15=25, >15=0
+  - stitches 18%      — <100=0, <500=20(+corrections L1/L2 density-aware), <1200=60, ≤50000=100, ≤150000=75, ≤500000=35, >500000=0
+  - dimensions 14%    — dans zone 360×200mm et ≥20×5mm = 100, légèrement hors zone = 55, hors zone = 0
+  - jumps 10%         — <0.5%=100, <2%=80, <4%=65, <8%=45, ≥8%=10
+  - density 10%       — 0.5-20 pts/mm²=100, 0.2-0.5=75, 20-50=65, <0.2=20, >50=15
+  - color_fidelity 18%— 100-int(ΔLab×1.2) × (0.4+0.6×ratio_fils)
+  - coverage 12%      — ratio couleurs obtenues/demandées, floor 80 quasi-couverture, floor 55 partielle
 
 Gate (plafond conditionnel) :
   - Pour raster (PNG/JPEG/WebP/PDF scanné) : essential_min = min(s_score, c_score)
@@ -103,11 +124,12 @@ Gate (plafond conditionnel) :
       python tests/run_benchmark.py --tests T01,T08,<tests_affectés>
 7. Mesurer le delta score
 8. Si T01 ou T08 régressent de > 5 points → rollback immédiat (Edit pour revenir à l'original)
-9. Logger l'itération dans docs/converter-quality.md (en cours de session)
+9. Logger l'itération dans docs/converter-memory.md (en cours de session)
 ```
 
 ### Règles de sécurité absolues
 
+- **Audit calibration (tous les 3 sessions)** : si la session est S7, S10, S13... → relire tous les seuils de scoring dans `previews.py` et valider contre réalité broderie PR1050X avant de faire des fixes (sinon on s'entraîne sur de fausses métriques)
 - **Ne JAMAIS modifier** `models.py`, `views.py`, `settings.py`, `urls.py`, `celery.py`
 - **Ne JAMAIS changer** les signatures des fonctions publiques exportées (celles importées dans `tasks.py`)
 - **Ne JAMAIS utiliser** `shell=True` dans subprocess
@@ -119,44 +141,46 @@ Gate (plafond conditionnel) :
 
 ### Candidats connus (à re-évaluer à chaque session)
 
-Ces candidats viennent des sessions précédentes. Ils peuvent être déjà résolus — toujours vérifier dans le code avant de les proposer.
+Ces candidats viennent des sessions précédentes. Ils peuvent être déjà résolus — toujours vérifier dans le code avant de les proposer. **Ne pas retenter** les approches marquées ❌ dans `docs/converter-memory.md` section "Ce qui a été tenté et n'a PAS fonctionné".
 
-| Candidat | Fichier | Fonction | Impact estimé | Risque |
-|----------|---------|----------|---------------|--------|
-| VTracer corner_threshold adaptatif | `png_processing.py` | `_vectorize_vtracer_cli()` | T02/T03/T06 | Faible |
-| filter_micro_paths proportionnel à la taille | `svg_utils.py` | `filter_micro_paths()` | T03/T04 | Moyen |
-| color_fidelity pénalité blanc/noir réduite | `thread_color.py` | score mapping | T01 | Faible |
-| T02 coverage VTracer color_precision | `png_processing.py` | params VTracer | T02/T07 | Moyen |
-| Preview PES : rendu satin fill | `previews.py` | `generate_pes_preview()` | visuel uniquement | Faible |
+| Candidat | Fichier | Fonction | Tests concernés | Risque |
+|----------|---------|----------|-----------------|--------|
+| snap couleurs Lab : améliorer sélection fil Brother | `thread_color.py` | `snap_svg_colors_to_brother_palette()` | T01 (color_fidelity=66) | Faible |
+| VTracer corner_threshold adaptatif selon n_colors | `png_processing.py` | `_vectorize_vtracer_cli()` | T02/T03/T06 | Faible |
+| filter_micro_paths proportionnel à la taille design | `svg_utils.py` | `filter_micro_paths()` | T03/T04 | Moyen |
+| reorder_svg_paths TSP-greedy amélioré | `svg_utils.py` | `reorder_svg_paths_for_minimal_jumps()` | T05 (jumps 2.1%) | Élevé |
 
 ---
 
-## Mapping des 12 tests de référence
+## Mapping des 14 tests de référence
 
 Ces tests sont codés en dur dans `tests/run_benchmark.py`. Ne pas les modifier sans raison — ils définissent la baseline inter-sessions.
 
-| ID | Fichier (tests/manual/) | Format | Paramètres | Cas testé |
-|----|------------------------|--------|------------|-----------|
-| T01 | png/06-logo-monochrome-blanc.png | PNG | n=2, remove_bg, width=80mm | Logo mono blanc fond transparent |
-| T02 | png/03-logo-multicolore.png | PNG | n=5, width=80mm | Logo multi-couleurs plats |
-| T03 | png/07-ecusson-12couleurs.png | PNG | n=10, width=100mm | Écusson 12 couleurs complexe |
-| T04 | png/08-texte-fond-colore.png | PNG | n=4, width=60mm | Texte sur fond coloré |
-| T05 | png/09-photo-complexe-bruit.png | PNG | n=8, remove_bg, width=100mm | Photo avec bruit (ceiling test) |
-| T06 | jpeg/12-logo-formes-simple.jpg | JPEG | n=6, width=80mm | Logo géométrique JPEG |
-| T07 | webp/test-logo.webp | WebP | n=5, width=80mm | Logo WebP |
-| T08 | svg/01-circle-simple.svg | SVG | direct, width=80mm | SVG trivial (anti-régression, doit = 100) |
-| T09 | svg/07-logo-atelier-8couleurs.svg | SVG | direct, width=100mm | SVG multi-couleurs |
-| T10 | svg/06-text-outline.svg | SVG | direct, width=80mm | Texte en contours fins SVG |
-| T11 | pdf/test-logo.pdf | PDF | n=6, width=100mm | PDF vectoriel |
-| T12 | pdf/test-scanned-pdf.pdf | PDF | n=4, width=80mm | PDF scanné (raster) |
+| ID | Fichier (tests/manual/) | Format | Paramètres | Niveau | Cas testé |
+|----|------------------------|--------|------------|--------|-----------|
+| T01 | png/06-logo-monochrome-blanc.png | PNG | n=2, remove_bg, width=80mm | Medium | Logo mono blanc fond transparent |
+| T02 | png/03-logo-multicolore.png | PNG | n=5, width=80mm | Easy-Medium | Logo multi-couleurs plats |
+| T03 | png/07-ecusson-12couleurs.png | PNG | n=10, width=100mm | Hard | Écusson 12 couleurs complexe |
+| T04 | png/08-texte-fond-colore.png | PNG | n=4, width=60mm | Medium | Texte sur fond coloré |
+| T05 | png/09-photo-complexe-bruit.png | PNG | n=8, remove_bg, width=100mm | Hard/Ceiling | Photo avec bruit (ceiling naturel) |
+| T06 | jpeg/12-logo-formes-simple.jpg | JPEG | n=6, width=80mm | Easy-Medium | Logo géométrique JPEG |
+| T07 | webp/test-logo.webp | WebP | n=5, width=80mm | Easy-Medium | Logo WebP |
+| T08 | svg/01-circle-simple.svg | SVG | direct, width=80mm | Easy | SVG trivial **(anti-régression, doit = 100)** |
+| T09 | svg/07-logo-atelier-8couleurs.svg | SVG | direct, width=100mm | Medium | SVG multi-couleurs |
+| T10 | svg/06-text-outline.svg | SVG | direct, width=80mm | Medium | Texte en contours fins SVG |
+| T11 | pdf/test-logo.pdf | PDF | n=6, width=100mm | Medium | PDF vectoriel simple |
+| T12 | pdf/test-scanned-pdf.pdf | PDF | n=4, width=80mm | Medium | PDF scanné (raster) |
+| T13 | svg/08-texte-fin-contours.svg | SVG | direct, width=60mm | Hard | Texte très fin contours (lisibilité machine) |
+| T14 | pdf/test-vectoriel-complexe.pdf | PDF | n=6, width=120mm | Hard | PDF vectoriel complexe grand format |
 
-**Tests anti-régression prioritaires :** T01 et T08 — un fix qui les dégrade de >5 pts doit être rollbacké.
+**Tests anti-régression prioritaires :** T01 (min=86) et T08 (doit=100) — un fix qui les dégrade de >5 pts doit être rollbacké immédiatement.
+**T05 = ceiling naturel** : photo complexe avec bruit, plafond algorithmique — ne pas s'acharner.
 
 ---
 
-## Phase 5 — Mise à jour de docs/converter-quality.md
+## Phase 5 — Mise à jour de docs/converter-memory.md
 
-Après les 3 cycles, mettre à jour `docs/converter-quality.md` :
+Après les cycles d'amélioration, mettre à jour `docs/converter-memory.md` :
 
 ### 5a. Ajouter une ligne au tableau des sessions
 
@@ -198,6 +222,12 @@ Lister les 3 meilleurs candidats pour la prochaine session, en ordre de ROI.
 ### 5e. Mettre à jour le tableau "Résultats détaillés"
 
 Ajouter une colonne "Score session N" avec les nouveaux scores, ou créer un nouveau sous-tableau.
+
+### 5f. Mettre à jour la section [LIRE EN PREMIER] de docs/converter-memory.md
+
+- Mettre à jour **Score actuel** et la date de dernière session
+- Mettre à jour **Prochaines priorités** (3 meilleurs candidats pour la prochaine session, en ordre de ROI)
+- Ajouter à **Ce qui a été tenté et n'a PAS fonctionné** si une nouvelle approche a échoué cette session
 
 ---
 

@@ -30,9 +30,14 @@
     </svg>
     <div>
       <span class="font-medium">Analyse automatique</span> —
-      <strong>{{ n_colors }} couleur{{ n_colors|pluralize }}</strong> détectée{{ n_colors|pluralize }}{% if capped %} <span class="badge badge-warning badge-sm">limite 16 atteinte — vérifiez</span>{% endif %},
-      largeur <strong>{{ suggested_width }} mm</strong>,
-      suppression fond : <strong>{% if has_white_background %}activée (fond détecté){% else %}désactivée{% endif %}</strong>.
+      {% if has_bg_bonus %}
+        <strong>{{ embroidery_colors }} couleur{{ embroidery_colors|pluralize }} à broder</strong>
+        + <span class="text-base-content/70">1 fond supprimé automatiquement</span>
+        = <strong>{{ n_colors }} total{% if capped %} <span class="badge badge-warning badge-sm">limite 16 atteinte — vérifiez</span>{% endif %}</strong>
+      {% else %}
+        <strong>{{ n_colors }} couleur{{ n_colors|pluralize }}</strong> détectée{{ n_colors|pluralize }}{% if capped %} <span class="badge badge-warning badge-sm">limite 16 atteinte — vérifiez</span>{% endif %}
+      {% endif %},
+      largeur <strong>{{ suggested_width }} mm</strong>.
       Paramètres appliqués — modifiez-les si besoin.
     </div>
   </div>

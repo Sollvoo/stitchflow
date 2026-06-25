@@ -26,25 +26,76 @@
       </a>
 
       {% if user.is_authenticated %}
-      <div class="dropdown dropdown-end">
-        <div tabindex="0" role="button" class="btn btn-ghost btn-sm btn-circle avatar placeholder">
-          <div class="bg-primary/10 text-primary rounded-full w-8">
-            <span class="text-sm font-semibold">{{ user.first_name|slice:":1"|upper|default:user.email|slice:":1"|upper }}</span>
+      <div x-data="{
+        open: false,
+        top: 0,
+        right: 0,
+        toggle() {
+          if (!this.open) {
+            const r = this.$refs.btn.getBoundingClientRect();
+            this.top = r.bottom + 8;
+            this.right = window.innerWidth - r.right;
+          }
+          this.open = !this.open;
+        }
+      }">
+        <button x-ref="btn" @click.stop="toggle()"
+                class="btn btn-ghost btn-sm gap-1.5 font-medium">
+          <div class="w-7 h-7 rounded-full bg-primary/15 text-primary flex items-center justify-center text-xs font-bold shrink-0">
+            {{ user.first_name|slice:":1"|upper|default:user.email|slice:":1"|upper }}
           </div>
-        </div>
-        <ul tabindex="0" class="menu menu-sm dropdown-content bg-base-100 rounded-box z-[60] mt-1 w-52 p-2 shadow-lg border border-base-200">
-          <li class="menu-title text-xs px-2 py-1">
-            <span class="truncate">{{ user.email }}</span>
-          </li>
-          <li><a href="{% url 'conversions:job_list' %}">Mes conversions</a></li>
-          <li><a href="{% url 'users:profile' %}">Profil</a></li>
-          <li>
-            <form method="post" action="{% url 'users:logout' %}" class="p-0">
-              {% csrf_token %}
-              <button type="submit" class="text-error w-full text-left">Déconnexion</button>
-            </form>
-          </li>
-        </ul>
+          <span class="hidden sm:inline max-w-[80px] truncate">{{ user.first_name|default:user.email }}</span>
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 opacity-50 transition-transform duration-200" :class="open ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        <template x-teleport="body">
+          <div x-show="open"
+               @click.stop
+               @click.outside="open = false"
+               @keydown.escape.window="open = false"
+               x-transition:enter="transition ease-out duration-150"
+               x-transition:enter-start="opacity-0 -translate-y-1"
+               x-transition:enter-end="opacity-100 translate-y-0"
+               x-transition:leave="transition ease-in duration-100"
+               x-transition:leave-start="opacity-100 translate-y-0"
+               x-transition:leave-end="opacity-0 -translate-y-1"
+               :style="`position:fixed; top:${top}px; right:${right}px; z-index:9999; background:#fff; box-shadow:0 8px 32px rgba(0,0,0,.12),0 2px 8px rgba(0,0,0,.06); border:1px solid rgba(0,0,0,.07);`"
+               class="w-56 rounded-2xl overflow-hidden">
+            <!-- Email -->
+            <div class="px-4 pt-3.5 pb-2.5" style="border-bottom: 1px solid rgba(0,0,0,0.06);">
+              <p class="text-xs font-medium truncate" style="color:#9ca3af;">{{ user.email }}</p>
+            </div>
+            <!-- Mon compte -->
+            <div class="px-2 pt-2 pb-1">
+              <p class="px-2 pb-1 text-[10px] font-semibold tracking-widest uppercase" style="color:#c0c0c0;">Mon compte</p>
+              <a href="{% url 'conversions:history' %}" class="flex items-center gap-3 px-2 py-2 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+                <svg class="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                Mes conversions
+              </a>
+              <a href="{% url 'users:profile' %}" class="flex items-center gap-3 px-2 py-2 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+                <svg class="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                Profil
+              </a>
+            </div>
+            <!-- Déconnexion -->
+            <div class="px-2 pb-2" style="border-top: 1px solid rgba(0,0,0,0.06);">
+              <form method="post" action="{% url 'users:logout' %}" class="mt-1">
+                {% csrf_token %}
+                <button type="submit" class="w-full flex items-center gap-3 px-2 py-2 rounded-xl text-sm font-medium transition-colors" style="color:#ef4444;" onmouseover="this.style.background='rgba(239,68,68,0.06)'" onmouseout="this.style.background='transparent'">
+                  <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                  Déconnexion
+                </button>
+              </form>
+            </div>
+          </div>
+        </template>
       </div>
       {% else %}
       <a href="{% url 'users:login' %}" class="btn btn-ghost btn-sm">Connexion</a>

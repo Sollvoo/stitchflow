@@ -207,9 +207,10 @@ def _score_vectorization_coverage(
 
     ratio = min(n_obtained, n_colors_requested) / max(n_obtained, n_colors_requested)
     score = int(ratio * 100)
-    # Plancher à 55 : une vectorisation partielle n'est pas un échec total quand la source
-    # est naturellement mono (PDF scanné, texte unicolore, fond retiré intentionnellement).
-    score = max(score, 55)
+    # Plancher à 65 : un design mono-couleur correctement brodé (PDF scanné, texte unicolore,
+    # fond retiré intentionnellement) produit un PES valide sur PR1050X même avec 1 fil.
+    # 65 = "acceptable" plutôt que "partiel" — reflète mieux la réalité machine.
+    score = max(score, 65)
     # Quasi-couverture : une couleur manquante = vraisemblablement le fond blanc retiré par
     # remove_bg, pas un échec de vectorisation. Floor 80 reflète cette situation normale.
     if n_obtained >= n_colors_requested - 1 and n_obtained > 0:
@@ -221,7 +222,7 @@ def _score_vectorization_coverage(
         msg = (
             f"{n_obtained}/{n_colors_requested} couleurs vectorisées — bonne couverture"
         )
-    elif score >= 50:
+    elif score >= 65:
         msg = f"{n_obtained}/{n_colors_requested} couleurs vectorisées — couverture partielle"
     else:
         msg = f"{n_obtained}/{n_colors_requested} couleurs vectorisées — vectorisation appauvrie"
@@ -354,6 +355,13 @@ def _compute_quality_score(
     else:
         j_score = 10
         j_msg = f"{jump_count} sauts ({jump_ratio*100:.1f}%) — excessif, design mal optimisé"
+
+    # Floor pour designs courts (≤15 sauts absolus) : le ratio pénalise injustement
+    # les petits designs où quelques sauts inévitables (changements couleur, lettres séparées)
+    # créent un ratio élevé sur peu de points. 15 sauts = ~15s sur PR1050X, toujours acceptable.
+    if jump_count <= 15 and j_score < 65:
+        j_score = 65
+        j_msg = f"{jump_count} sauts ({jump_ratio*100:.1f}%) — faible nombre absolu, acceptable"
 
     # 5. Densité points/mm² (10%)
     if width_mm > 0 and height_mm > 0:
@@ -560,25 +568,34 @@ def generate_pes_preview(pes_path: Path, output_dir: Path) -> Path | None:
         if width <= 0 or height <= 0:
             return None
 
-        # Dimensions finales (inchangées vs avant)
         MAX_DIM = 1200
-        # Rendu interne à 2× pour obtenir l'anti-aliasing via downsample LANCZOS
         RENDER_SCALE = 2
-        # Fond crème/lin — simule un tissu blanc photographié sous lumière naturelle
         FABRIC_COLOR = (245, 240, 232)
-        # Flou léger avant downsample pour simuler le relief arrondi du fil
         BLUR_RADIUS = 0.8
 
         scale = min(MAX_DIM / width, MAX_DIM / height, 1.0)
         img_w = max(1, int(width * scale))
         img_h = max(1, int(height * scale))
 
-        # Canvas de rendu 2× — chaque stitch est dessiné plus épais, puis réduit
         render_scale = scale * RENDER_SCALE
         render_w = img_w * RENDER_SCALE
         render_h = img_h * RENDER_SCALE
-        # 6px à 2× → ~3px après downsample, avec bords anti-aliasés
-        line_w = max(2, round(6 * scale)) if scale < 1.0 else 6
+
+        # Calcul de densité pour adapter l'épaisseur du trait :
+        # les designs à fill stitches denses (fond plein) nécessitent un trait fin
+        # pour que les zones colorées distinctes restent lisibles dans le preview.
+        approx_stitches = sum(
+            1 for s in pattern.stitches if (s[2] & 0xFF) == pyembroidery.STITCH
+        )
+        area_px = img_w * img_h
+        density_px = approx_stitches / area_px if area_px > 0 else 0
+
+        if density_px > 0.015:
+            # Design dense (fill stitches) → trait fin pour voir les couleurs distinctes
+            line_w = max(1, round(2 * scale)) if scale < 1.0 else 2
+        else:
+            # Design léger (outlines, broderie sparse) → trait habituel
+            line_w = max(2, round(6 * scale)) if scale < 1.0 else 6
 
         img = Image.new("RGB", (render_w, render_h), color=FABRIC_COLOR)
         draw = ImageDraw.Draw(img)

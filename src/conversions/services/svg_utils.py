@@ -528,8 +528,9 @@ def force_max_svg_colors(svg_path: Path, max_colors: int = 10) -> int:
     current_fills = list(unique_fills)
     n_merged = 0
 
-    # Pré-pass : éliminer les couleurs parasites (< 1% de la surface du viewBox)
-    # avant la fusion itérative, pour éviter qu'elles ne contaminent les grandes zones.
+    # Pré-pass : éliminer les couleurs parasites (anti-aliasing, artefacts minuscules)
+    # avant la fusion itérative. Seuil relatif à la surface des éléments colorés réels
+    # (pas au viewBox total qui peut inclure un fond vide de grande taille).
     viewbox_parts = root.get("viewBox", "").split()
     total_area = 0.0
     if len(viewbox_parts) == 4:
@@ -537,7 +538,8 @@ def force_max_svg_colors(svg_path: Path, max_colors: int = 10) -> int:
             total_area = float(viewbox_parts[2]) * float(viewbox_parts[3])
         except ValueError:
             pass
-    dust_threshold = total_area * 0.01
+    active_area = sum(fill_surface_area.values())
+    dust_threshold = active_area * 0.005 if active_area > 0 else total_area * 0.005
 
     if dust_threshold > 0:
         for dust_f in list(current_fills):

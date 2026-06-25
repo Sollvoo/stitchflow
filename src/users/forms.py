@@ -112,3 +112,32 @@ class ProfileForm(forms.ModelForm):
             'first_name': forms.TextInput(attrs={'placeholder': 'Marie'}),
             'last_name': forms.TextInput(attrs={'placeholder': 'Dupont'}),
         }
+
+
+class ChangeEmailForm(forms.Form):
+    email = forms.EmailField(
+        label='Nouvel email',
+        widget=forms.EmailInput(attrs={'placeholder': 'nouveau@email.com', 'autocomplete': 'email'}),
+    )
+    password = forms.CharField(
+        label='Mot de passe actuel (confirmation)',
+        widget=forms.PasswordInput(attrs={'placeholder': '••••••••', 'autocomplete': 'current-password'}),
+    )
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._user = user
+
+    def clean_email(self) -> str:
+        email = self.cleaned_data['email'].strip().lower()
+        if self._user and email == self._user.email.lower():
+            raise ValidationError("C'est déjà votre email actuel.")
+        if User.objects.filter(email__iexact=email).exclude(pk=self._user.pk if self._user else None).exists():
+            raise ValidationError('Un compte existe déjà avec cet email.')
+        return email
+
+    def clean_password(self) -> str:
+        password = self.cleaned_data['password']
+        if self._user and not self._user.check_password(password):
+            raise ValidationError('Mot de passe incorrect.')
+        return password

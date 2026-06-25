@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block title %}Mes conversions{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 py-8">
+
+  <!-- En-tête -->
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+    <div>
+      <h1 class="text-xl font-bold">Mes conversions</h1>
+      <p class="text-sm text-base-content/50 mt-0.5">{{ total_count }} conversion{% if total_count != 1 %}s{% endif %}</p>
+    </div>
+    <div class="flex gap-2">
+      <a href="{% url 'conversions:export_csv' %}{% if query_string %}?{{ query_string }}{% endif %}"
+         class="btn btn-ghost btn-sm gap-2" title="Exporter en CSV">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+        </svg>
+        CSV
+      </a>
+      <a href="{% url 'conversions:upload' %}" class="btn btn-primary btn-sm gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+        </svg>
+        Nouvelle conversion
+      </a>
+    </div>
+  </div>
+
+  <!-- Filtres + Recherche -->
+  <form method="get" class="flex flex-wrap gap-2 mb-6">
+    <!-- Barre de recherche -->
+    <div class="relative flex-1 min-w-48">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-base-content/40 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+      </svg>
+      <input type="text" name="q" value="{{ search_query }}"
+             placeholder="Rechercher par nom…"
+             class="input input-bordered input-sm w-full pl-9"
+             autocomplete="off">
+    </div>
+    <!-- Filtres -->
+    <select name="status" class="select select-bordered select-sm" onchange="this.form.submit()">
+      <option value="" {% if not status_filter %}selected{% endif %}>Tous les statuts</option>
+      <option value="completed" {% if status_filter == 'completed' %}selected{% endif %}>Terminé</option>
+      <option value="failed" {% if status_filter == 'failed' %}selected{% endif %}>Échec</option>
+      <option value="in_progress" {% if status_filter == 'in_progress' %}selected{% endif %}>En cours</option>
+    </select>
+    <select name="format" class="select select-bordered select-sm" onchange="this.form.submit()">
+      <option value="" {% if not format_filter %}selected{% endif %}>Tous les formats</option>
+      <option value="svg" {% if format_filter == 'svg' %}selected{% endif %}>SVG</option>
+      <option value="png" {% if format_filter == 'png' %}selected{% endif %}>PNG</option>
+      <option value="jpeg" {% if format_filter == 'jpeg' %}selected{% endif %}>JPEG</option>
+      <option value="pdf" {% if format_filter == 'pdf' %}selected{% endif %}>PDF</option>
+    </select>
+    <select name="date" class="select select-bordered select-sm" onchange="this.form.submit()">
+      <option value="" {% if not date_filter %}selected{% endif %}>Toutes les dates</option>
+      <option value="7d" {% if date_filter == '7d' %}selected{% endif %}>7 derniers jours</option>
+      <option value="30d" {% if date_filter == '30d' %}selected{% endif %}>30 derniers jours</option>
+    </select>
+    <button type="submit" class="btn btn-sm btn-neutral gap-1">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+      </svg>
+      Rechercher
+    </button>
+    {% if status_filter or format_filter or date_filter or search_query %}
+    <a href="{% url 'conversions:history' %}" class="btn btn-ghost btn-sm">Effacer</a>
+    {% endif %}
+  </form>
+
+  <!-- Grille galerie -->
+  {% if page_obj.object_list %}
+  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+    {% for job in page_obj %}
+    <div class="card bg-base-100 shadow-sm border border-base-200 hover:shadow-md transition-shadow group">
+
+      <!-- Thumbnail -->
+      <a href="{% url 'conversions:detail' job.id %}" class="block aspect-square bg-base-200 overflow-hidden rounded-t-2xl">
+        {% if job.preview_file %}
+        <img src="{{ job.preview_file.url }}" class="w-full h-full object-cover" alt="aperçu {{ job.original_filename }}">
+        {% else %}
+        <div class="w-full h-full flex items-center justify-center">
+          <span class="text-4xl opacity-40">
+            {% if job.source_format == 'svg' %}🖊️
+            {% elif job.source_format == 'pdf' %}📄
+            {% else %}🖼️{% endif %}
+          </span>
+        </div>
+        {% endif %}
+      </a>
+
+      <!-- Infos -->
+      <div class="p-3 flex flex-col gap-1.5">
+        <!-- Nom du fichier -->
+        <a href="{% url 'conversions:detail' job.id %}" class="text-sm font-medium truncate leading-tight hover:text-primary transition-colors" title="{{ job.original_filename }}.{{ job.source_format }}">
+          {{ job.original_filename|default:"Sans nom" }}{% if job.original_filename %}<span class="text-base-content/40">.{{ job.source_format }}</span>{% endif %}
+        </a>
+
+        <!-- Date -->
+        <p class="text-xs text-base-content/40">{{ job.created_at|date:"d/m/Y à H\hi" }}</p>
+
+        <!-- Badges statut + score -->
+        <div class="flex flex-wrap items-center gap-1 mt-0.5">
+          {% if job.status == 'completed' %}
+          <span class="badge badge-success badge-xs">Terminé</span>
+          {% elif job.status == 'failed' %}
+          <span class="badge badge-error badge-xs">Échec</span>
+          {% elif job.status == 'awaiting_svg_validation' %}
+          <span class="badge badge-info badge-xs">À valider</span>
+          {% else %}
+          <span class="badge badge-ghost badge-xs">En cours</span>
+          {% endif %}
+
+          {% if job.status == 'completed' and job.conversion_metadata.quality_score %}
+          {% with score=job.conversion_metadata.quality_score %}
+          <span class="badge badge-xs {% if score >= 75 %}badge-success{% elif score >= 50 %}badge-warning{% else %}badge-error{% endif %}">
+            ★ {{ score }}
+          </span>
+          {% endwith %}
+          {% endif %}
+
+          {% if job.conversion_metadata.stitch_count %}
+          <span class="text-xs text-base-content/40">{{ job.conversion_metadata.stitch_count|floatformat:"0" }} pts</span>
+          {% endif %}
+        </div>
+
+        <!-- Actions -->
+        <div class="flex items-center gap-1 mt-1">
+          <a href="{% url 'conversions:detail' job.id %}" class="btn btn-xs btn-ghost gap-1 flex-1" title="Voir le détail">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+            Détail
+          </a>
+
+          {% if job.status == 'completed' and job.output_file %}
+          <a href="{% url 'conversions:download' job.id %}" class="btn btn-xs btn-ghost" title="Télécharger PES">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+          </a>
+          {% endif %}
+
+          {% if job.original_file %}
+          <div class="dropdown dropdown-end">
+            <div tabindex="0" role="button" class="btn btn-ghost btn-xs btn-square" title="Plus d'actions">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+              </svg>
+            </div>
+            <ul tabindex="0" class="dropdown-content menu menu-xs bg-base-100 rounded-box z-[50] w-36 p-1 shadow-lg border border-base-200">
+              <li>
+                <form method="post" action="{% url 'conversions:reconvert' job.id %}">
+                  {% csrf_token %}
+                  <button type="submit" class="w-full text-left">Reconvertir</button>
+                </form>
+              </li>
+            </ul>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Pagination -->
+  {% if page_obj.has_other_pages %}
+  <div class="flex justify-center mt-8">
+    <div class="join">
+      {% if page_obj.has_previous %}
+      <a href="?page={{ page_obj.previous_page_number }}{% if query_string %}&{{ query_string }}{% endif %}"
+         class="join-item btn btn-sm">«</a>
+      {% else %}
+      <button class="join-item btn btn-sm btn-disabled">«</button>
+      {% endif %}
+
+      {% for num in page_obj.paginator.page_range %}
+        {% if page_obj.number == num %}
+        <button class="join-item btn btn-sm btn-active">{{ num }}</button>
+        {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+        <a href="?page={{ num }}{% if query_string %}&{{ query_string }}{% endif %}"
+           class="join-item btn btn-sm">{{ num }}</a>
+        {% endif %}
+      {% endfor %}
+
+      {% if page_obj.has_next %}
+      <a href="?page={{ page_obj.next_page_number }}{% if query_string %}&{{ query_string }}{% endif %}"
+         class="join-item btn btn-sm">»</a>
+      {% else %}
+      <button class="join-item btn btn-sm btn-disabled">»</button>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="card bg-base-100 shadow-sm border border-base-200">
+    <div class="card-body items-center text-center py-16 gap-4">
+      <div class="text-5xl">🧵</div>
+      {% if status_filter or format_filter or date_filter or search_query %}
+      <h2 class="text-lg font-semibold">Aucune conversion ne correspond</h2>
+      <p class="text-sm text-base-content/50">Essayez de modifier les filtres ou la recherche.</p>
+      <a href="{% url 'conversions:history' %}" class="btn btn-ghost btn-sm mt-1">Effacer tout</a>
+      {% else %}
+      <h2 class="text-lg font-semibold">Aucune conversion pour l'instant</h2>
+      <p class="text-sm text-base-content/50">Uploadez un fichier SVG, PNG ou PDF pour commencer.</p>
+      <a href="{% url 'conversions:upload' %}" class="btn btn-primary btn-sm mt-2">Démarrer une conversion</a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

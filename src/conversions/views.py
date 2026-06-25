@@ -1,9 +1,12 @@
+import csv
 import json
+import shutil
 import tempfile
 from collections import Counter
 from pathlib import Path
 
 from django.conf import settings
+from django.core.paginator import Paginator
 from django.views.generic import CreateView, DetailView, View
 from django.contrib import messages
 from django.http import FileResponse, Http404, HttpResponse, HttpRequest, JsonResponse
@@ -190,14 +193,130 @@ class UploadPDFView(CreateView):
 
 
 class JobListView(View):
-    """Liste des conversions de l'utilisateur connecté."""
+    """Redirige vers le nouveau dashboard historique."""
 
     def get(self, request: HttpRequest) -> HttpResponse:
-        from django.contrib.auth.decorators import login_required
+        return redirect('conversions:history')
+
+
+class HistoryView(View):
+    """Dashboard historique paginé avec filtres, recherche, score qualité, re-conversion, CSV."""
+
+    def get(self, request: HttpRequest) -> HttpResponse:
         if not request.user.is_authenticated:
-            return redirect(f'/auth/login/?next=/conversions/mes-conversions/')
-        jobs = ConversionJob.objects.filter(user=request.user).order_by('-created_at')[:50]
-        return render(request, 'conversions/job_list.html', {'jobs': jobs})
+            return redirect(f'/auth/login/?next=/conversions/history/')
+
+        qs = ConversionJob.objects.filter(user=request.user).order_by('-created_at')
+
+        search_query = request.GET.get('q', '').strip()
+        status_filter = request.GET.get('status', '')
+        format_filter = request.GET.get('format', '')
+        date_filter = request.GET.get('date', '')
+
+        if search_query:
+            qs = qs.filter(original_filename__icontains=search_query)
+
+        if status_filter in ('completed', 'failed', 'processing', 'pending'):
+            qs = qs.filter(status=status_filter)
+        elif status_filter == 'in_progress':
+            qs = qs.filter(status__in=[ConversionJob.Status.PENDING, ConversionJob.Status.PROCESSING])
+
+        if format_filter in ('svg', 'png', 'jpeg', 'webp', 'pdf'):
+            qs = qs.filter(source_format=format_filter)
+
+        if date_filter == '7d':
+            from django.utils import timezone
+            from datetime import timedelta
+            qs = qs.filter(created_at__gte=timezone.now() - timedelta(days=7))
+        elif date_filter == '30d':
+            from django.utils import timezone
+            from datetime import timedelta
+            qs = qs.filter(created_at__gte=timezone.now() - timedelta(days=30))
+
+        paginator = Paginator(qs, 24)
+        page_number = request.GET.get('page', 1)
+        page_obj = paginator.get_page(page_number)
+
+        # query_string sans le paramètre page pour les liens de pagination et CSV
+        params = request.GET.copy()
+        params.pop('page', None)
+        query_string = params.urlencode()
+
+        return render(request, 'conversions/history.html', {
+            'page_obj': page_obj,
+            'search_query': search_query,
+            'status_filter': status_filter,
+            'format_filter': format_filter,
+            'date_filter': date_filter,
+            'total_count': qs.count(),
+            'query_string': query_string,
+        })
+
+
+class ReconvertView(View):
+    """Crée un nouveau job à partir du fichier source d'un job existant."""
+
+    def post(self, request: HttpRequest, pk) -> HttpResponse:
+        if not request.user.is_authenticated:
+            return redirect('users:login')
+
+        original = get_object_or_404(ConversionJob, pk=pk)
+        if original.user and original.user != request.user:
+            return redirect('conversions:history')
+
+        new_job = ConversionJob.objects.create(
+            source_format=original.source_format,
+            original_filename=original.original_filename,
+            target_width_mm=original.target_width_mm,
+            n_colors=original.n_colors,
+            remove_background=original.remove_background,
+            user=request.user if request.user.is_authenticated else None,
+        )
+
+        if original.original_file:
+            old_path = Path(original.original_file.path)
+            if old_path.exists():
+                new_name = f'conversions/uploads/{new_job.id}{old_path.suffix}'
+                new_path = Path(settings.MEDIA_ROOT) / new_name
+                new_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(old_path, new_path)
+                new_job.original_file = new_name
+                new_job.save(update_fields=['original_file'])
+
+        process_conversion_job.delay(str(new_job.id))
+        return redirect('conversions:detail', pk=new_job.id)
+
+
+class ExportCSVView(View):
+    """Exporte les conversions de l'utilisateur au format CSV."""
+
+    def get(self, request: HttpRequest) -> HttpResponse:
+        if not request.user.is_authenticated:
+            return redirect('users:login')
+
+        response = HttpResponse(content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = 'attachment; filename="stichflow-conversions.csv"'
+        response.write('﻿')
+
+        writer = csv.writer(response)
+        writer.writerow(['ID', 'Fichier', 'Format', 'Statut', 'Score qualité', 'Points', 'Fils', 'Largeur (mm)', 'Date'])
+
+        jobs = ConversionJob.objects.filter(user=request.user).order_by('-created_at')
+        for job in jobs:
+            meta = job.conversion_metadata or {}
+            writer.writerow([
+                str(job.id),
+                job.original_filename or '',
+                job.source_format,
+                job.get_status_display(),
+                meta.get('quality_score', ''),
+                meta.get('stitch_count', ''),
+                meta.get('thread_count', ''),
+                job.target_width_mm or '',
+                job.created_at.strftime('%d/%m/%Y %H:%M'),
+            ])
+
+        return response
 
 
 class JobDetailView(DetailView):
@@ -391,15 +510,15 @@ class AnalyzePNGView(View):
                 img_w, img_h = rgb.width, rgb.height
                 total_pixels = img_w * img_h
 
-                # Quantize à 32 couleurs — plus de granularité que 12
-                # pour ne pas fusionner prématurément les couleurs distinctes
-                quantized = rgb.quantize(colors=32, method=Image.Quantize.MEDIANCUT)
+                # Quantize à 64 couleurs — évite la fusion prématurée des couleurs
+                # distinctes lors du MEDIANCUT (était 32 auparavant)
+                quantized = rgb.quantize(colors=64, method=Image.Quantize.MEDIANCUT)
                 counts = Counter(quantized.get_flattened_data())
                 palette = quantized.getpalette()
 
-                # Seuil 0.5% (était 1%) — capture les petites zones colorées
+                # Seuil 0.3% — capture les petites zones colorées
                 # ex: les étoiles dans un écusson représentent ~2-3% des pixels
-                _MIN_RATIO = 0.005
+                _MIN_RATIO = 0.003
                 near_white_pixels = 0
                 significant_colors = 0
                 color_swatches: list[dict] = []
@@ -407,8 +526,9 @@ class AnalyzePNGView(View):
                     r = palette[idx * 3]
                     g = palette[idx * 3 + 1]
                     b = palette[idx * 3 + 2]
-                    # Seuil 225 (assoupli vs 230) pour attraper les fonds crème
-                    if r > 225 and g > 225 and b > 225:
+                    # Détection fond clair par luminance perceptuelle (capture crème/beige)
+                    luminance = 0.299 * r + 0.587 * g + 0.114 * b
+                    if luminance > 230:
                         near_white_pixels += count
                     elif count / total_pixels >= _MIN_RATIO:
                         significant_colors += 1
@@ -420,9 +540,12 @@ class AnalyzePNGView(View):
                 has_white_background = (
                     near_white_pixels / total_pixels > 0.55 or has_transparent_bg
                 )
-                # Cap à 16 (max du slider) avec flag si atteint
-                n_colors = max(2, min(significant_colors, 16))
-                capped = significant_colors > 16
+                # +1 quand fond détecté : VTracer utilise n_colors pour quantiser TOUTE
+                # l'image fond inclus ; sans ce +1, un cluster est "gaspillé" sur le fond
+                # et le design perd une couleur après suppression du fond.
+                n_colors_recommended = significant_colors + (1 if has_white_background else 0)
+                n_colors = max(2, min(n_colors_recommended, 16))
+                capped = n_colors_recommended > 16
 
                 # Largeur : DPI EXIF si disponible, sinon heuristique pixel
                 dpi_info = img.info.get('dpi') or img.info.get('jfif_density')
@@ -452,7 +575,7 @@ class AnalyzePNGView(View):
 
             if significant_colors > 10:
                 brodability = 'red'
-            elif n_colors > 6 or low_dpi_warning:
+            elif significant_colors > 6 or low_dpi_warning:
                 brodability = 'orange'
             else:
                 brodability = 'green'
@@ -463,6 +586,8 @@ class AnalyzePNGView(View):
         return render(request, 'conversions/partials/png_suggestions.html', {
             'n_colors': n_colors,
             'has_white_background': has_white_background,
+            'has_bg_bonus': has_white_background,
+            'embroidery_colors': significant_colors,
             'total_significant': significant_colors,
             'suggested_width': suggested_width,
             'capped': capped,

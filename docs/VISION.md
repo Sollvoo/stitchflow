@@ -14,6 +14,21 @@ StitchFlow automatise les conversions **simples à moyennes** instantanément, p
 - **Douleur principale** : payer 10 €/conversion + délai d'attente pour des fichiers qui devraient pouvoir être automatisés
 - **Gain attendu** : économiser sur les conversions simples, payer le prestataire humain uniquement pour les designs complexes qui le justifient
 
+## Machine cible (beta)
+
+**Brother entrepreneur pro X PR1050X** — machine professionnelle 10 aiguilles.
+
+| Contrainte | Valeur | Implication pour le scoring |
+|---|---|---|
+| Aiguilles | 10 max | ≤7 fils = idéal (score 100) ; 8–10 = acceptable (score 80) ; >10 = impossible sans re-enfilage (score 25 ou 0) |
+| Zone de broderie | 360×200mm max | Designs hors zone = score 0 ; légèrement hors zone (<400×230mm) = score 55 |
+| Points max recommandés | < 500 000 | Au-delà = risque dépassement mémoire machine et broderie trop longue |
+| Coupe-fil automatique | Oui | Jumps < 4% acceptables (machine gère automatiquement) ; > 8% = problème critique |
+| Format natif | PES v1 | Ink/Stitch génère PES v1 — les entêtes COLOR_BREAK blancs sont filtrés par `previews.py` |
+| Vitesse broderie | ~600 pts/min (estimation conservative) | `time_minutes = stitch_count / 600` |
+
+---
+
 ## Positionnement
 
 > "La conversion automatique de broderie pour les designs qui n'ont pas besoin d'un humain."

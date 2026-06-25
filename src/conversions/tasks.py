@@ -314,9 +314,15 @@ def finalize_svg_to_pes(self, job_id: str) -> None:
     logger.info("Finalisation PES job %s depuis %s", job_id, job.vectorized_svg_file.name)
 
     svg_path = Path(settings.MEDIA_ROOT) / job.vectorized_svg_file.name
+    import tempfile as _tmpmod
+    import os as _os
+    _fd, _tmp = _tmpmod.mkstemp(suffix='_finalize.svg')
+    _os.close(_fd)
+    tmp_working_svg = Path(_tmp)
+    shutil.copy2(svg_path, tmp_working_svg)
 
     try:
-        _run_svg_to_pes_pipeline(job, svg_path)
+        _run_svg_to_pes_pipeline(job, tmp_working_svg)
 
     except SVGValidationError as exc:
         logger.error("Validation SVG échouée pour job %s : %s", job_id, exc)
@@ -336,3 +342,6 @@ def finalize_svg_to_pes(self, job_id: str) -> None:
         job.status = ConversionJob.Status.FAILED
         job.error_message = str(exc)
         job.save(update_fields=['status', 'error_message', 'updated_at'])
+
+    finally:
+        tmp_working_svg.unlink(missing_ok=True)

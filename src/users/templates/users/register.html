@@ -2,7 +2,7 @@
 
 {% block content %}
 <div class="min-h-[70vh] flex items-center justify-center px-4 py-12">
-  <div class="card bg-base-100 shadow-lg w-full max-w-sm">
+  <div class="card bg-base-100 shadow-lg w-full max-w-md">
     <div class="card-body gap-5">
 
       <div class="text-center">
@@ -20,57 +20,57 @@
       <form method="post" class="flex flex-col gap-4">
         {% csrf_token %}
 
-        <label class="form-control">
-          <div class="label pb-1"><span class="label-text text-sm font-medium">Email <span class="text-error">*</span></span></div>
-          <input type="email" name="email" value="{{ form.email.value|default:'' }}"
-                 placeholder="votre@email.com"
-                 autocomplete="email"
-                 class="input input-bordered {% if form.email.errors %}input-error{% endif %}">
-          {% if form.email.errors %}
-          <div class="label"><span class="label-text-alt text-error">{{ form.email.errors.0 }}</span></div>
-          {% endif %}
-        </label>
-
         <div class="grid grid-cols-2 gap-3">
           <label class="form-control">
             <div class="label pb-1"><span class="label-text text-sm font-medium">Prénom</span></div>
             <input type="text" name="first_name" value="{{ form.first_name.value|default:'' }}"
                    placeholder="Marie"
                    autocomplete="given-name"
-                   class="input input-bordered input-sm">
+                   class="input input-bordered w-full">
           </label>
           <label class="form-control">
             <div class="label pb-1"><span class="label-text text-sm font-medium">Nom</span></div>
             <input type="text" name="last_name" value="{{ form.last_name.value|default:'' }}"
                    placeholder="Dupont"
                    autocomplete="family-name"
-                   class="input input-bordered input-sm">
+                   class="input input-bordered w-full">
           </label>
         </div>
 
-        <label class="form-control">
+        <label class="form-control w-full">
+          <div class="label pb-1"><span class="label-text text-sm font-medium">Email <span class="text-error">*</span></span></div>
+          <input type="email" name="email" value="{{ form.email.value|default:'' }}"
+                 placeholder="votre@email.com"
+                 autocomplete="email"
+                 class="input input-bordered w-full {% if form.email.errors %}input-error{% endif %}">
+          {% if form.email.errors %}
+          <div class="label"><span class="label-text-alt text-error">{{ form.email.errors.0 }}</span></div>
+          {% endif %}
+        </label>
+
+        <label class="form-control w-full">
           <div class="label pb-1"><span class="label-text text-sm font-medium">Mot de passe <span class="text-error">*</span></span></div>
           <input type="password" name="password1"
                  placeholder="8 caractères minimum"
                  autocomplete="new-password"
-                 class="input input-bordered {% if form.password1.errors %}input-error{% endif %}">
+                 class="input input-bordered w-full {% if form.password1.errors %}input-error{% endif %}">
           {% if form.password1.errors %}
           <div class="label"><span class="label-text-alt text-error">{{ form.password1.errors.0 }}</span></div>
           {% endif %}
         </label>
 
-        <label class="form-control">
+        <label class="form-control w-full">
           <div class="label pb-1"><span class="label-text text-sm font-medium">Confirmer <span class="text-error">*</span></span></div>
           <input type="password" name="password2"
                  placeholder="••••••••"
                  autocomplete="new-password"
-                 class="input input-bordered {% if form.password2.errors %}input-error{% endif %}">
+                 class="input input-bordered w-full {% if form.password2.errors %}input-error{% endif %}">
           {% if form.password2.errors %}
           <div class="label"><span class="label-text-alt text-error">{{ form.password2.errors.0 }}</span></div>
           {% endif %}
         </label>
 
-        <button type="submit" class="btn btn-primary mt-1">Créer mon compte</button>
+        <button type="submit" class="btn btn-primary w-full mt-1">Créer mon compte</button>
       </form>
 
       <div class="divider text-xs text-base-content/30">ou</div>

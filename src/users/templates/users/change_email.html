@@ -6,9 +6,9 @@
     <div class="card-body gap-5">
 
       <div class="text-center">
-        <div class="text-4xl mb-2">🧵</div>
-        <h1 class="text-xl font-bold">Connexion</h1>
-        <p class="text-sm text-base-content/50 mt-1">Accédez à vos conversions</p>
+        <div class="text-4xl mb-2">📧</div>
+        <h1 class="text-xl font-bold">Changer l'adresse email</h1>
+        <p class="text-sm text-base-content/50 mt-1">Email actuel : <span class="font-medium">{{ user.email }}</span></p>
       </div>
 
       {% if form.non_field_errors %}
@@ -19,23 +19,18 @@
 
       <form method="post" class="flex flex-col gap-4">
         {% csrf_token %}
-
         <label class="form-control w-full">
-          <div class="label pb-1"><span class="label-text text-sm font-medium">Email</span></div>
+          <div class="label pb-1"><span class="label-text text-sm font-medium">Nouvel email</span></div>
           <input type="email" name="email" value="{{ form.email.value|default:'' }}"
-                 placeholder="votre@email.com"
+                 placeholder="nouveau@email.com"
                  autocomplete="email"
                  class="input input-bordered w-full {% if form.email.errors %}input-error{% endif %}">
           {% if form.email.errors %}
           <div class="label"><span class="label-text-alt text-error">{{ form.email.errors.0 }}</span></div>
           {% endif %}
         </label>
-
         <label class="form-control w-full">
-          <div class="label pb-1">
-            <span class="label-text text-sm font-medium">Mot de passe</span>
-            <a href="{% url 'users:password_reset' %}" class="label-text-alt link link-primary text-xs">Mot de passe oublié ?</a>
-          </div>
+          <div class="label pb-1"><span class="label-text text-sm font-medium">Mot de passe actuel (confirmation)</span></div>
           <input type="password" name="password"
                  placeholder="••••••••"
                  autocomplete="current-password"
@@ -44,15 +39,11 @@
           <div class="label"><span class="label-text-alt text-error">{{ form.password.errors.0 }}</span></div>
           {% endif %}
         </label>
-
-        <button type="submit" class="btn btn-primary w-full mt-1">Se connecter</button>
+        <button type="submit" class="btn btn-primary w-full mt-1">Mettre à jour l'email</button>
       </form>
 
-      <div class="divider text-xs text-base-content/30">ou</div>
-
       <p class="text-center text-sm text-base-content/60">
-        Pas encore de compte ?
-        <a href="{% url 'users:register' %}" class="link link-primary font-medium">S'inscrire</a>
+        <a href="{% url 'users:profile' %}" class="link link-primary">Retour au profil</a>
       </p>
 
     </div>

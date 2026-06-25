@@ -6,7 +6,7 @@ from django.shortcuts import redirect, render
 from django.utils.decorators import method_decorator
 from django.views import View
 
-from .forms import EmailLoginForm, ProfileForm, SignUpForm
+from .forms import ChangeEmailForm, EmailLoginForm, ProfileForm, SignUpForm
 
 
 class LoginView(View):
@@ -62,5 +62,24 @@ class ProfileView(View):
         if form.is_valid():
             form.save()
             messages.success(request, 'Profil mis à jour.')
+            return redirect('users:profile')
+        return render(request, self.template_name, {'form': form})
+
+
+@method_decorator(login_required, name='dispatch')
+class ChangeEmailView(View):
+    template_name = 'users/change_email.html'
+
+    def get(self, request: HttpRequest) -> HttpResponse:
+        return render(request, self.template_name, {'form': ChangeEmailForm(user=request.user)})
+
+    def post(self, request: HttpRequest) -> HttpResponse:
+        form = ChangeEmailForm(request.POST, user=request.user)
+        if form.is_valid():
+            new_email = form.cleaned_data['email']
+            request.user.email = new_email
+            request.user.username = new_email
+            request.user.save(update_fields=['email', 'username'])
+            messages.success(request, f'Email mis à jour : {new_email}')
             return redirect('users:profile')
         return render(request, self.template_name, {'form': form})

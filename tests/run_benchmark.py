@@ -215,6 +215,42 @@ TESTS: list[dict[str, Any]] = [
         'target_width_mm': 100,
         'description': 'PDF complexe lourd 1.37MB — Hard',
     },
+    {
+        'test_id': 'T17',
+        'file': 'svg/02-star-5pts.svg',
+        'format': 'svg',
+        'n_colors': None,
+        'remove_bg': False,
+        'target_width_mm': 80,
+        'description': 'SVG étoile 5 branches — Easy',
+    },
+    {
+        'test_id': 'T18',
+        'file': 'svg/05-flower-paths.svg',
+        'format': 'svg',
+        'n_colors': None,
+        'remove_bg': False,
+        'target_width_mm': 80,
+        'description': 'SVG fleur multi-chemins — Easy-Medium',
+    },
+    {
+        'test_id': 'T19',
+        'file': 'png/02-formes-couleurs.png',
+        'format': 'png',
+        'n_colors': 4,
+        'remove_bg': True,
+        'target_width_mm': 80,
+        'description': 'PNG formes géométriques 4 couleurs + fond beige — Medium (test détection background)',
+    },
+    {
+        'test_id': 'T20',
+        'file': 'svg/03-geometric-multicolor.svg',
+        'format': 'svg',
+        'n_colors': None,
+        'remove_bg': False,
+        'target_width_mm': 80,
+        'description': 'SVG géométrique multicolore — Easy-Medium',
+    },
 ]
 
 
