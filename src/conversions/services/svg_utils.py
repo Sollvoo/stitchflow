@@ -1031,6 +1031,43 @@ def _strip_clip_path_refs(root: ET.Element) -> int:
     return removed
 
 
+def _annotate_fill_paths_for_inkstitch(root: ET.Element) -> int:
+    """
+    Ajoute inkstitch:fill_method="auto_fill" sur tous les paths remplis.
+
+    Sans cet attribut, Ink/Stitch peut heuristiquement traiter des paths remplis
+    en running_stitch (contours seulement) au lieu de tatami fill, surtout pour
+    les paths complexes issus de vectorisation raster.
+    Ne touche pas aux éléments déjà annotés ou en running_stitch intentionnel.
+    Retourne le nombre d'éléments annotés.
+    """
+    _FILL_TAGS = frozenset([
+        f"{{{_SVG_NS}}}path", "path",
+        f"{{{_SVG_NS}}}rect", "rect",
+        f"{{{_SVG_NS}}}circle", "circle",
+        f"{{{_SVG_NS}}}ellipse", "ellipse",
+        f"{{{_SVG_NS}}}polygon", "polygon",
+    ])
+    _FILL_METHOD_ATTR = f"{{{_INKSTITCH_NS}}}fill_method"
+    _STROKE_METHOD_ATTR = f"{{{_INKSTITCH_NS}}}stroke_method"
+    _NONE_FILLS = frozenset(["none", "transparent", ""])
+
+    annotated = 0
+    for el in root.iter():
+        if el.tag not in _FILL_TAGS:
+            continue
+        fill = el.get("fill", "").strip().lower()
+        if fill in _NONE_FILLS:
+            continue
+        if el.get(_STROKE_METHOD_ATTR):
+            continue
+        if el.get(_FILL_METHOD_ATTR):
+            continue
+        el.set(_FILL_METHOD_ATTR, "auto_fill")
+        annotated += 1
+    return annotated
+
+
 def prepare_svg_for_inkstitch(svg_path: Path) -> dict[str, int]:
     """
     Normalise le SVG pour maximiser la compatibilité Ink/Stitch.
@@ -1041,7 +1078,7 @@ def prepare_svg_for_inkstitch(svg_path: Path) -> dict[str, int]:
 
     Étape B — Python :
       styles CSS inlinés en attributs explicites, éléments invisibles supprimés,
-      clip-path et mask retirés (éléments brodés en totalité).
+      clip-path et mask retirés, fills annotés inkstitch:fill_method=auto_fill.
 
     Retourne un dict de compteurs pour logging.
     """
@@ -1050,6 +1087,7 @@ def prepare_svg_for_inkstitch(svg_path: Path) -> dict[str, int]:
         "styles_inlined": 0,
         "invisible_removed": 0,
         "clips_stripped": 0,
+        "fills_annotated": 0,
     }
 
     inkscape = shutil.which("inkscape")
@@ -1097,6 +1135,7 @@ def prepare_svg_for_inkstitch(svg_path: Path) -> dict[str, int]:
     stats["styles_inlined"] = _inline_svg_styles(root)
     stats["invisible_removed"] = _remove_invisible_elements(root)
     stats["clips_stripped"] = _strip_clip_path_refs(root)
+    stats["fills_annotated"] = _annotate_fill_paths_for_inkstitch(root)
 
     if any(v > 0 for k, v in stats.items() if k != "inkscape_run"):
         tree.write(svg_path, encoding="unicode", xml_declaration=True)

@@ -570,8 +570,10 @@ def generate_pes_preview(pes_path: Path, output_dir: Path) -> Path | None:
 
         MAX_DIM = 1200
         RENDER_SCALE = 2
-        FABRIC_COLOR = (245, 240, 232)
         BLUR_RADIUS = 0.8
+        # Fond gris si un fil blanc/clair est présent dans le design (sinon blanc invisible)
+        has_white = any(_is_near_white_thread(t.color) for t in threadlist)
+        FABRIC_COLOR = (160, 160, 160) if has_white else (245, 240, 232)
 
         scale = min(MAX_DIM / width, MAX_DIM / height, 1.0)
         img_w = max(1, int(width * scale))
