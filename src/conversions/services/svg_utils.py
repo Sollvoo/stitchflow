@@ -1147,7 +1147,7 @@ def get_svg_colors_with_count(svg_path: Path) -> list[dict]:
     """
     Retourne la liste des couleurs distinctes du SVG avec le nombre d'éléments par couleur.
     Inclut les éléments fill colorés ET les éléments stroke-only (running_stitch : fill=none, stroke=color).
-    Résultat trié par count décroissant : [{'hex': '#rrggbb', 'count': N}, ...]
+    Résultat dans l'ordre d'apparition dans le SVG (= ordre de broderie Ink/Stitch).
     """
     try:
         root = ET.parse(svg_path).getroot()
@@ -1161,13 +1161,10 @@ def get_svg_colors_with_count(svg_path: Path) -> list[dict]:
         if fill and fill not in ("none", "transparent") and not fill.startswith("url("):
             counts[fill] = counts.get(fill, 0) + 1
         elif (not fill or fill in ("none", "transparent")) and stroke and stroke not in ("none", "") and not stroke.startswith("url("):
-            # Éléments running_stitch : fill absent/none, couleur portée par stroke
             counts[stroke] = counts.get(stroke, 0) + 1
 
-    return sorted(
-        [{"hex": h, "count": c} for h, c in counts.items()],
-        key=lambda x: -x["count"],
-    )
+    # Ordre d'insertion = ordre d'apparition dans le SVG = ordre de broderie
+    return [{"hex": h, "count": c} for h, c in counts.items()]
 
 
 def merge_svg_colors(svg_path: Path, source_hex: str, target_hex: str) -> int:

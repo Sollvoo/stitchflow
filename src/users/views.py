@@ -21,6 +21,10 @@ class LoginView(View):
         form = EmailLoginForm(request.POST, request=request)
         if form.is_valid():
             login(request, form.get_user())
+            if request.POST.get('remember_me'):
+                request.session.set_expiry(60 * 60 * 24 * 30)  # 30 jours
+            else:
+                request.session.set_expiry(0)  # expire à la fermeture du navigateur
             next_url = request.GET.get('next', '/conversions/')
             return redirect(next_url)
         return render(request, self.template_name, {'form': form})
