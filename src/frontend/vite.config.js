@@ -23,8 +23,8 @@ export default defineConfig({
   },
   server: {
     host: 'localhost',
-    port: 5173,
-    origin: 'http://localhost:5173',
+    port: 5174,
+    origin: 'http://localhost:5174',
     watch: {
       ignored: ['**/node_modules/**', '**/static/dist/**'],
     },

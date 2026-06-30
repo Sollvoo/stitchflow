@@ -298,17 +298,17 @@ Objectif : donner à l'utilisateur une vue sur ses conversions passées. Nécess
 
 ---
 
-## Phase 11 — Éditeur broderie avancé
+## Phase 11 — Éditeur broderie avancé ✅
 
 Objectif : passer de l'éditeur léger (supprimer/fusionner/recolorer) à un contrôle professionnel sur le rendu broderie. Développer en fonction des retours de la beta.
 
 > À prioriser par ordre d'impact décroissant : ce qui cause le plus d'erreurs ou de frustration d'abord.
 
-- [ ] **Réordonner les couches de broderie** : drag-and-drop des couleurs pour changer l'ordre de broderie (quelle zone est cousue en premier)
-- [ ] **Choix du type de point** : satin (contours fins, texte) vs remplissage (zones pleines) vs point courant — par zone/couleur — nécessite params Ink/Stitch
+- [x] **Réordonner les couches de broderie** : drag-and-drop des couleurs pour changer l'ordre de broderie (quelle zone est cousue en premier)
+- [x] **Choix du type de point** : remplissage (auto_fill) vs point courant (running_stitch) — par zone/couleur — injecte params Ink/Stitch dans le SVG (`inkstitch:stroke_method`)
 - [ ] **Prévisualisation animée** : simulation stitch-par-stitch dans le navigateur (JS + pyembroidery data) — voir la broderie se dessiner avant lancement machine
-- [ ] **Densité par zone** : régler la densité des points couleur par couleur — utile pour tissus fins vs épais
-- [ ] **Historique undo/redo** des modifications dans l'éditeur
+- [x] **Densité par zone** : régler la densité des points couleur par couleur — injecte `inkstitch:row_spacing_mm` dans le SVG
+- [x] **Historique undo/redo** des modifications dans l'éditeur (snapshots fichiers, stack 20 niveaux)
 - [ ] Éditeur visuel full-featured si besoin (SVG.js ou Fabric.js) — évaluer après retours beta
 
 ---

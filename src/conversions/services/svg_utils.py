@@ -32,7 +32,36 @@ _SVG_NAMESPACES = {
     "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
     "sodipodi": "http://sodipodi.sourceforge.net/DTD/sodipodi-0.0.dtd",
     "inkscape": "http://www.inkscape.org/namespaces/inkscape",
+    "inkstitch": "http://inkstitch.org/namespace",
 }
+
+_INKSTITCH_NS = "http://inkstitch.org/namespace"
+_INKSTITCH_ROW_SPACING = f"{{{_INKSTITCH_NS}}}row_spacing_mm"
+_INKSTITCH_STROKE_METHOD = f"{{{_INKSTITCH_NS}}}stroke_method"
+
+_SNAPSHOT_SUBDIR = "conversions/snapshots"
+_SNAPSHOT_MAX = 20
+
+# Couleurs CSS nommées (sous-ensemble HTML/CSS courant) → #rrggbb
+_CSS_NAMED_COLORS: dict[str, str] = {
+    "black": "#000000", "white": "#ffffff", "red": "#ff0000",
+    "lime": "#00ff00", "blue": "#0000ff", "yellow": "#ffff00",
+    "cyan": "#00ffff", "magenta": "#ff00ff", "silver": "#c0c0c0",
+    "gray": "#808080", "grey": "#808080", "maroon": "#800000",
+    "olive": "#808000", "green": "#008000", "purple": "#800080",
+    "teal": "#008080", "navy": "#000080", "fuchsia": "#ff00ff",
+    "aqua": "#00ffff", "orange": "#ffa500", "pink": "#ffc0cb",
+    "brown": "#a52a2a", "coral": "#ff7f50", "gold": "#ffd700",
+    "indigo": "#4b0082", "ivory": "#fffff0", "khaki": "#f0e68c",
+    "lavender": "#e6e6fa", "crimson": "#dc143c", "turquoise": "#40e0d0",
+    "violet": "#ee82ee",
+}
+
+# Propriétés CSS à extraire du style= pour les poser comme attributs SVG explicites
+_CSS_PROPS_TO_INLINE: frozenset[str] = frozenset([
+    "fill", "stroke", "opacity", "display", "visibility",
+    "fill-opacity", "stroke-opacity", "fill-rule",
+])
 
 
 def _register_svg_namespaces() -> None:
@@ -797,11 +826,10 @@ def normalize_stroke_only_paths(svg_path: Path) -> int:
             sw_mm = sw_svg / _svg_units_per_mm
             if sw_mm < _MIN_STROKE_MM:
                 logger.debug(
-                    "[stroke-fix] stroke-width %.2fmm < 1mm — conservé comme stroke pour job %s",
+                    "[stroke-fix] stroke-width %.2fmm < 1mm → converti en fill quand même (Ink/Stitch ignore stroke-only) pour %s",
                     sw_mm,
                     svg_path.name,
                 )
-                continue
 
             el.set("fill", stroke)
             el.set("stroke", "none")
@@ -879,60 +907,207 @@ def scale_svg_to_width_mm(input_svg: Path, target_width_mm: int) -> Path:
     return Path(tmp.name)
 
 
-def convert_text_to_paths(svg_path: Path) -> int:
-    """
-    Convertit les éléments <text> du SVG en <path> via Inkscape --actions.
-    Modifie le fichier en place. Retourne le nombre d'éléments <text> convertis.
-    Silencieux si Inkscape est absent ou si le SVG ne contient pas de texte.
-    """
-    _SVG_NS_URI = "http://www.w3.org/2000/svg"
-    try:
-        root = ET.parse(svg_path).getroot()
-    except ET.ParseError:
-        return 0
+def _normalize_css_color(val: str) -> str:
+    """Normalise une valeur CSS couleur vers #rrggbb si possible."""
+    v = val.strip().lower()
+    if v in _CSS_NAMED_COLORS:
+        return _CSS_NAMED_COLORS[v]
+    m = re.match(r"rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)", v)
+    if m:
+        r, g, b = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        return f"#{r:02x}{g:02x}{b:02x}"
+    m = re.match(r"#([0-9a-f])([0-9a-f])([0-9a-f])$", v)
+    if m:
+        return f"#{m.group(1)*2}{m.group(2)*2}{m.group(3)*2}"
+    return val
 
-    text_count = sum(
-        1
-        for el in root.iter()
-        if el.tag in (f"{{{_SVG_NS_URI}}}text", "text")
-    )
-    if text_count == 0:
-        return 0
+
+def _inline_svg_styles(root: ET.Element) -> int:
+    """
+    Convertit les propriétés CSS dans style= en attributs SVG explicites.
+    Ex : style="fill:#f00;opacity:0.5" → fill="#f00" opacity="0.5".
+    Retourne le nombre d'éléments modifiés.
+    """
+    _COLOR_PROPS = frozenset(["fill", "stroke"])
+    _PASSTHROUGH = frozenset(["none", "transparent", "inherit", "currentcolor"])
+    modified = 0
+    for el in root.iter():
+        style_val = el.get("style", "").strip()
+        if not style_val:
+            continue
+        css: dict[str, str] = {}
+        for m in re.finditer(r"([\w-]+)\s*:\s*([^;]+?)(?=\s*(?:;|$))", style_val):
+            css[m.group(1).strip()] = m.group(2).strip()
+
+        changed = False
+        remaining: dict[str, str] = {}
+        for prop, val in css.items():
+            if prop not in _CSS_PROPS_TO_INLINE:
+                remaining[prop] = val
+                continue
+            if prop in _COLOR_PROPS and val.lower() not in _PASSTHROUGH:
+                val = _normalize_css_color(val)
+            if el.get(prop) is None:
+                el.set(prop, val)
+                changed = True
+
+        new_style = ";".join(f"{k}:{v}" for k, v in remaining.items())
+        if new_style != style_val:
+            if new_style:
+                el.set("style", new_style)
+            elif "style" in el.attrib:
+                del el.attrib["style"]
+            changed = True
+
+        if changed:
+            modified += 1
+    return modified
+
+
+def _remove_invisible_elements(root: ET.Element) -> int:
+    """
+    Supprime les éléments SVG qui ne produiront aucun point de broderie.
+    Traitement bottom-up pour éviter les références brisées.
+    Ne supprime jamais <svg>, <defs>, <style>, <metadata>.
+    Retourne le nombre d'éléments supprimés.
+    """
+    _SVG_NS = "http://www.w3.org/2000/svg"
+    _SAFE_LOCAL = frozenset(["svg", "defs", "style", "metadata", "title", "desc", "clippath", "mask", "symbol"])
+    _CONTAINER_LOCAL = frozenset(["g", "svg", "defs", "clippath", "mask", "symbol"])
+
+    def _local(tag: str) -> str:
+        return (tag.split("}")[-1] if "}" in tag else tag).lower()
+
+    def _is_invisible(el: ET.Element) -> bool:
+        loc = _local(el.tag)
+        if loc in _SAFE_LOCAL:
+            return False
+        display = el.get("display", "").strip().lower()
+        if display == "none":
+            return True
+        visibility = el.get("visibility", "").strip().lower()
+        if visibility == "hidden":
+            return True
+        try:
+            if float(el.get("opacity", "1")) == 0.0:
+                return True
+        except ValueError:
+            pass
+        fill = el.get("fill", "").strip().lower()
+        stroke = el.get("stroke", "").strip().lower()
+        fill_invisible = fill in ("none", "transparent", "")
+        stroke_invisible = stroke in ("none", "transparent", "")
+        if fill_invisible and stroke_invisible and loc not in _CONTAINER_LOCAL:
+            return True
+        return False
+
+    def _remove_from(parent: ET.Element) -> int:
+        count = 0
+        to_remove = []
+        for child in list(parent):
+            count += _remove_from(child)
+            if _is_invisible(child):
+                to_remove.append(child)
+        for el in to_remove:
+            parent.remove(el)
+            count += 1
+        return count
+
+    return _remove_from(root)
+
+
+def _strip_clip_path_refs(root: ET.Element) -> int:
+    """
+    Retire les attributs clip-path et mask de tous les éléments.
+    Les paths s'affichent sans clipping — tous leurs pixels sont brodables.
+    Retourne le nombre d'attributs supprimés.
+    """
+    removed = 0
+    for el in root.iter():
+        if el.attrib.pop("clip-path", None) is not None:
+            removed += 1
+        if el.attrib.pop("mask", None) is not None:
+            removed += 1
+    return removed
+
+
+def prepare_svg_for_inkstitch(svg_path: Path) -> dict[str, int]:
+    """
+    Normalise le SVG pour maximiser la compatibilité Ink/Stitch.
+
+    Étape A — Inkscape CLI :
+      textes/formes → paths, clones résolus, groupes aplatis (transforms appliqués),
+      deuxième passe object-to-path, defs nettoyées.
+
+    Étape B — Python :
+      styles CSS inlinés en attributs explicites, éléments invisibles supprimés,
+      clip-path et mask retirés (éléments brodés en totalité).
+
+    Retourne un dict de compteurs pour logging.
+    """
+    stats: dict[str, int] = {
+        "inkscape_run": 0,
+        "styles_inlined": 0,
+        "invisible_removed": 0,
+        "clips_stripped": 0,
+    }
 
     inkscape = shutil.which("inkscape")
-    if not inkscape:
-        logger.warning("[text2path] Inkscape absent, conversion texte→chemins ignorée")
-        return 0
+    if inkscape:
+        actions = (
+            "select-all;object-to-path;"
+            "select-all;clone-unlink;"
+            "select-all;selection-ungroup;"
+            "select-all;object-to-path;"
+            "vacuum-defs"
+        )
+        try:
+            result = subprocess.run(
+                [
+                    inkscape,
+                    f"--actions={actions}",
+                    "--export-type=svg",
+                    f"--export-filename={svg_path}",
+                    str(svg_path),
+                ],
+                capture_output=True,
+                timeout=60,
+            )
+            if result.returncode != 0:
+                logger.warning(
+                    "[svg-prep] Inkscape exit %d : %s",
+                    result.returncode,
+                    result.stderr.decode(errors="replace")[:300],
+                )
+            else:
+                stats["inkscape_run"] = 1
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+            logger.warning("[svg-prep] Inkscape normalisation échouée : %s", exc)
+    else:
+        logger.warning("[svg-prep] Inkscape absent, normalisation CLI ignorée")
 
     try:
-        result = subprocess.run(
-            [
-                inkscape,
-                "--actions=select-all;object-to-path",
-                f"--export-type=svg",
-                f"--export-filename={svg_path}",
-                str(svg_path),
-            ],
-            capture_output=True,
-            timeout=30,
-        )
-        if result.returncode != 0:
-            logger.warning(
-                "[text2path] Inkscape exit %d : %s",
-                result.returncode,
-                result.stderr.decode(errors="replace")[:200],
-            )
-            return 0
-        logger.info("[text2path] %d élément(s) <text> convertis en chemins dans %s", text_count, svg_path.name)
-        return text_count
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
-        logger.warning("[text2path] Conversion texte→chemins échouée : %s", exc)
-        return 0
+        _register_svg_namespaces()
+        tree = ET.parse(svg_path)
+        root = tree.getroot()
+    except ET.ParseError as exc:
+        logger.warning("[svg-prep] Parse SVG échoué après normalisation Inkscape : %s", exc)
+        return stats
+
+    stats["styles_inlined"] = _inline_svg_styles(root)
+    stats["invisible_removed"] = _remove_invisible_elements(root)
+    stats["clips_stripped"] = _strip_clip_path_refs(root)
+
+    if any(v > 0 for k, v in stats.items() if k != "inkscape_run"):
+        tree.write(svg_path, encoding="unicode", xml_declaration=True)
+
+    return stats
 
 
 def get_svg_colors_with_count(svg_path: Path) -> list[dict]:
     """
-    Retourne la liste des couleurs de fill distinctes du SVG avec le nombre d'éléments par couleur.
+    Retourne la liste des couleurs distinctes du SVG avec le nombre d'éléments par couleur.
+    Inclut les éléments fill colorés ET les éléments stroke-only (running_stitch : fill=none, stroke=color).
     Résultat trié par count décroissant : [{'hex': '#rrggbb', 'count': N}, ...]
     """
     try:
@@ -943,8 +1118,12 @@ def get_svg_colors_with_count(svg_path: Path) -> list[dict]:
     counts: dict[str, int] = {}
     for el in root.iter():
         fill = el.get("fill", "").strip().lower()
+        stroke = el.get("stroke", "").strip().lower()
         if fill and fill not in ("none", "transparent") and not fill.startswith("url("):
             counts[fill] = counts.get(fill, 0) + 1
+        elif (not fill or fill in ("none", "transparent")) and stroke and stroke not in ("none", "") and not stroke.startswith("url("):
+            # Éléments running_stitch : fill absent/none, couleur portée par stroke
+            counts[stroke] = counts.get(stroke, 0) + 1
 
     return sorted(
         [{"hex": h, "count": c} for h, c in counts.items()],
@@ -969,8 +1148,14 @@ def merge_svg_colors(svg_path: Path, source_hex: str, target_hex: str) -> int:
     modified = 0
 
     for el in root.iter():
-        if el.get("fill", "").strip().lower() == src:
+        fill = el.get("fill", "").strip().lower()
+        stroke = el.get("stroke", "").strip().lower()
+        if fill == src:
             el.set("fill", tgt)
+            modified += 1
+        elif fill in ("none", "") and stroke == src:
+            # Élément running_stitch : couleur portée par stroke
+            el.set("stroke", tgt)
             modified += 1
 
     if modified:
@@ -1018,3 +1203,305 @@ def remove_excluded_colors_from_svg(svg_path: Path, excluded_hexes: list[str]) -
         )
 
     return removed
+
+
+# ---------------------------------------------------------------------------
+# Phase 11 — Historique undo/redo (snapshots fichiers)
+# ---------------------------------------------------------------------------
+
+
+def save_svg_snapshot(svg_path: Path, media_root: Path, job_id: str, history: dict) -> dict:
+    """
+    Copie le SVG courant en snapshot avant une opération d'édition.
+    Vide la pile 'future' (redo impossible après une nouvelle action).
+    Retourne l'historique mis à jour : {'past': [...], 'future': []}.
+    """
+    snap_dir = media_root / _SNAPSHOT_SUBDIR / job_id
+    snap_dir.mkdir(parents=True, exist_ok=True)
+
+    past: list[str] = list(history.get("past", []))
+
+    snap_index = len(past)
+    snap_path = snap_dir / f"snap_{snap_index}.svg"
+    shutil.copy2(svg_path, snap_path)
+
+    past.append(str(snap_path.relative_to(media_root)))
+    if len(past) > _SNAPSHOT_MAX:
+        old_rel = past.pop(0)
+        try:
+            (media_root / old_rel).unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    return {"past": past, "future": []}
+
+
+def undo_svg(svg_path: Path, media_root: Path, history: dict) -> tuple[bool, dict]:
+    """
+    Restaure le snapshot précédent (dernier élément de 'past').
+    Pousse l'état courant dans 'future'.
+    Retourne (success, new_history).
+    """
+    past: list[str] = list(history.get("past", []))
+    future: list[str] = list(history.get("future", []))
+
+    if not past:
+        return False, history
+
+    snap_rel = past.pop()
+    snap_path = media_root / snap_rel
+    if not snap_path.exists():
+        return False, history
+
+    # Sauvegarde l'état courant dans future avant d'écraser
+    cur_index = len(past) + len(future)
+    cur_snap_dir = snap_path.parent
+    cur_snap_path = cur_snap_dir / f"cur_{cur_index}.svg"
+    shutil.copy2(svg_path, cur_snap_path)
+    future.insert(0, str(cur_snap_path.relative_to(media_root)))
+
+    shutil.copy2(snap_path, svg_path)
+    logger.info("[undo] Restauré snapshot %s", snap_rel)
+
+    return True, {"past": past, "future": future}
+
+
+def redo_svg(svg_path: Path, media_root: Path, history: dict) -> tuple[bool, dict]:
+    """
+    Restaure le snapshot suivant (premier élément de 'future').
+    Pousse l'état courant dans 'past'.
+    Retourne (success, new_history).
+    """
+    past: list[str] = list(history.get("past", []))
+    future: list[str] = list(history.get("future", []))
+
+    if not future:
+        return False, history
+
+    snap_rel = future.pop(0)
+    snap_path = media_root / snap_rel
+    if not snap_path.exists():
+        return False, history
+
+    cur_index = len(past)
+    cur_snap_dir = snap_path.parent
+    cur_snap_path = cur_snap_dir / f"snap_{cur_index}.svg"
+    shutil.copy2(svg_path, cur_snap_path)
+    past.append(str(cur_snap_path.relative_to(media_root)))
+
+    shutil.copy2(snap_path, svg_path)
+    logger.info("[redo] Restauré snapshot %s", snap_rel)
+
+    return True, {"past": past, "future": future}
+
+
+def reset_svg(svg_path: Path, media_root: Path, history: dict) -> tuple[bool, dict]:
+    """
+    Restaure le premier snapshot (état avant la première édition) et efface tout l'historique.
+    Retourne (success, new_history).
+    """
+    past: list[str] = list(history.get("past", []))
+    if not past:
+        return False, history
+
+    first_snap_path = media_root / past[0]
+    if not first_snap_path.exists():
+        return False, history
+
+    shutil.copy2(first_snap_path, svg_path)
+    logger.info("[reset] Restauré état initial %s", past[0])
+    return True, {"past": [], "future": []}
+
+
+# ---------------------------------------------------------------------------
+# Phase 11 — Réordonner les couches (ordre de broderie)
+# ---------------------------------------------------------------------------
+
+
+def reorder_svg_colors(svg_path: Path, ordered_hexes: list[str]) -> None:
+    """
+    Réordonne les éléments SVG par couleur de fill selon ordered_hexes.
+    Les éléments de la première couleur seront brodés en premier par Ink/Stitch.
+    Les éléments sans fill dans ordered_hexes restent à la fin (arrière-plan).
+    """
+    _register_svg_namespaces()
+    try:
+        tree = ET.parse(svg_path)
+    except ET.ParseError:
+        return
+
+    root = tree.getroot()
+    ordered_lower = [h.strip().lower() for h in ordered_hexes]
+
+    def _elem_fill(el: ET.Element) -> str:
+        return el.get("fill", "").strip().lower()
+
+    children = list(root)
+
+    def _color_rank(el: ET.Element) -> int:
+        fill = _elem_fill(el)
+        if fill in ordered_lower:
+            return ordered_lower.index(fill)
+        # Vérifier les enfants directs (groupe <g fill="...">)
+        for child in el:
+            fill = _elem_fill(child)
+            if fill in ordered_lower:
+                return ordered_lower.index(fill)
+        return len(ordered_lower)
+
+    children.sort(key=_color_rank)
+
+    for child in list(root):
+        root.remove(child)
+    for child in children:
+        root.append(child)
+
+    tree.write(svg_path, encoding="unicode", xml_declaration=True)
+    logger.info("[reorder] Couleurs réordonnées dans %s : %s", svg_path.name, ordered_lower)
+
+
+# ---------------------------------------------------------------------------
+# Phase 11 — Type de point par couleur (fill vs running stitch)
+# ---------------------------------------------------------------------------
+
+
+def get_stitch_types(svg_path: Path) -> dict[str, str]:
+    """
+    Retourne {hex_color: stitch_type} pour chaque couleur du SVG.
+    stitch_type ∈ {'auto_fill', 'running_stitch'}
+    """
+    try:
+        root = ET.parse(svg_path).getroot()
+    except ET.ParseError:
+        return {}
+
+    result: dict[str, str] = {}
+    for el in root.iter():
+        fill = el.get("fill", "").strip().lower()
+        stroke = el.get("stroke", "").strip().lower()
+        stroke_method = el.get(_INKSTITCH_STROKE_METHOD, "")
+
+        if stroke and stroke not in ("none", "") and fill in ("none", ""):
+            # Contour sans fill → running_stitch
+            color = stroke
+            result[color] = "running_stitch"
+        elif fill and fill not in ("none", "transparent") and not fill.startswith("url("):
+            if stroke_method == "running_stitch":
+                result[fill] = "running_stitch"
+            else:
+                result.setdefault(fill, "auto_fill")
+
+    return result
+
+
+def set_stitch_type(svg_path: Path, hex_color: str, stitch_type: str) -> int:
+    """
+    Applique le type de point à tous les éléments de la couleur donnée.
+    - 'auto_fill' : fill=color, supprime stroke et inkstitch:stroke_method
+    - 'running_stitch' : fill=none, stroke=color, inkstitch:stroke_method=running_stitch
+    Retourne le nombre d'éléments modifiés.
+    """
+    _register_svg_namespaces()
+    try:
+        tree = ET.parse(svg_path)
+    except ET.ParseError:
+        return 0
+
+    root = tree.getroot()
+    color = hex_color.strip().lower()
+    modified = 0
+
+    for el in root.iter():
+        fill = el.get("fill", "").strip().lower()
+        stroke = el.get("stroke", "").strip().lower()
+
+        is_this_color = (fill == color) or (
+            fill in ("none", "") and stroke == color
+        )
+        if not is_this_color:
+            continue
+
+        if stitch_type == "auto_fill":
+            el.set("fill", color)
+            el.attrib.pop("stroke", None)
+            el.attrib.pop(_INKSTITCH_STROKE_METHOD, None)
+        elif stitch_type == "running_stitch":
+            el.set("fill", "none")
+            el.set("stroke", color)
+            el.set(_INKSTITCH_STROKE_METHOD, "running_stitch")
+
+        modified += 1
+
+    if modified:
+        tree.write(svg_path, encoding="unicode", xml_declaration=True)
+        logger.info(
+            "[stitch-type] %d éléments %s → %s dans %s",
+            modified, color, stitch_type, svg_path.name,
+        )
+
+    return modified
+
+
+# ---------------------------------------------------------------------------
+# Phase 11 — Densité de point par couleur (inkstitch:row_spacing_mm)
+# ---------------------------------------------------------------------------
+
+
+def get_stitch_densities(svg_path: Path) -> dict[str, float]:
+    """
+    Retourne {hex_color: density_mm} pour chaque couleur.
+    Défaut : 0.4 si l'attribut est absent.
+    """
+    try:
+        root = ET.parse(svg_path).getroot()
+    except ET.ParseError:
+        return {}
+
+    result: dict[str, float] = {}
+    for el in root.iter():
+        fill = el.get("fill", "").strip().lower()
+        stroke = el.get("stroke", "").strip().lower()
+        color = fill if fill and fill not in ("none", "transparent") else stroke
+        if not color or color in ("none", ""):
+            continue
+        raw = el.get(_INKSTITCH_ROW_SPACING, "")
+        try:
+            density = float(raw)
+        except (ValueError, TypeError):
+            density = 0.4
+        result.setdefault(color, density)
+
+    return result
+
+
+def set_stitch_density(svg_path: Path, hex_color: str, density_mm: float) -> int:
+    """
+    Applique inkstitch:row_spacing_mm sur tous les éléments de la couleur.
+    Retourne le nombre d'éléments modifiés.
+    """
+    _register_svg_namespaces()
+    try:
+        tree = ET.parse(svg_path)
+    except ET.ParseError:
+        return 0
+
+    root = tree.getroot()
+    color = hex_color.strip().lower()
+    density_str = f"{density_mm:.2f}"
+    modified = 0
+
+    for el in root.iter():
+        fill = el.get("fill", "").strip().lower()
+        stroke = el.get("stroke", "").strip().lower()
+        if fill == color or (fill in ("none", "") and stroke == color):
+            el.set(_INKSTITCH_ROW_SPACING, density_str)
+            modified += 1
+
+    if modified:
+        tree.write(svg_path, encoding="unicode", xml_declaration=True)
+        logger.info(
+            "[density] %d éléments %s → %.2f mm dans %s",
+            modified, color, density_mm, svg_path.name,
+        )
+
+    return modified

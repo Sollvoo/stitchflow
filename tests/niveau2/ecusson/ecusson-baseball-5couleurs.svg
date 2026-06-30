@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <!-- Fond cercle -->
+  <circle cx="200" cy="200" r="185" fill="#1b3a6b"/>
+  <circle cx="200" cy="200" r="185" fill="none" stroke="#c8a951" stroke-width="7"/>
+  <circle cx="200" cy="200" r="170" fill="none" stroke="#c8a951" stroke-width="2"/>
+  <!-- Bande rouge diagonale -->
+  <path d="M 60,130 Q 200,90 340,130 L 340,175 Q 200,135 60,175 Z" fill="#cc2222"/>
+  <path d="M 60,230 Q 200,265 340,230 L 340,275 Q 200,310 60,275 Z" fill="#cc2222"/>
+  <!-- Texte principal -->
+  <text x="200" y="215" font-family="Arial Black,sans-serif" font-size="52" font-weight="900"
+        fill="white" text-anchor="middle" letter-spacing="3">EAGLES</text>
+  <!-- Texte arc haut -->
+  <path id="arc-top" d="M 55,200 A 145,145 0 0,1 345,200" fill="none"/>
+  <text font-family="Arial,sans-serif" font-size="22" fill="#c8a951" letter-spacing="4">
+    <textPath href="#arc-top" startOffset="12%">★ CHAMPION LEAGUE ★</textPath>
+  </text>
+  <!-- Texte arc bas -->
+  <path id="arc-bot" d="M 55,200 A 145,145 0 0,0 345,200" fill="none"/>
+  <text font-family="Arial,sans-serif" font-size="20" fill="#c8a951" letter-spacing="2">
+    <textPath href="#arc-bot" startOffset="18%">EST. 1987 · NEW YORK</textPath>
+  </text>
+</svg>

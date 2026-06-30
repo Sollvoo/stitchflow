@@ -68,12 +68,12 @@ from conversions.services.validation import SVGValidationError, validate_svg_con
 # ---------------------------------------------------------------------------
 # Configuration des 12 tests
 # ---------------------------------------------------------------------------
-TESTS_DIR = ROOT / 'tests' / 'manual'
+TESTS_DIR = ROOT / 'tests'
 
 TESTS: list[dict[str, Any]] = [
     {
         'test_id': 'T01',
-        'file': 'png/06-logo-monochrome-blanc.png',
+        'file': 'niveau2/logo/06-logo-monochrome-blanc.png',
         'format': 'png',
         'n_colors': 2,
         'remove_bg': True,
@@ -82,7 +82,7 @@ TESTS: list[dict[str, Any]] = [
     },
     {
         'test_id': 'T02',
-        'file': 'png/03-logo-multicolore.png',
+        'file': 'niveau1/logo/03-logo-multicolore.png',
         'format': 'png',
         'n_colors': 5,
         'remove_bg': False,
@@ -91,7 +91,7 @@ TESTS: list[dict[str, Any]] = [
     },
     {
         'test_id': 'T03',
-        'file': 'png/07-ecusson-12couleurs.png',
+        'file': 'niveau3/ecusson/07-ecusson-12couleurs.png',
         'format': 'png',
         'n_colors': 10,
         'remove_bg': False,
@@ -100,7 +100,7 @@ TESTS: list[dict[str, Any]] = [
     },
     {
         'test_id': 'T04',
-        'file': 'png/08-texte-fond-colore.png',
+        'file': 'niveau2/texte/08-texte-fond-colore.png',
         'format': 'png',
         'n_colors': 4,
         'remove_bg': False,
@@ -109,7 +109,7 @@ TESTS: list[dict[str, Any]] = [
     },
     {
         'test_id': 'T05',
-        'file': 'png/09-photo-complexe-bruit.png',
+        'file': 'niveau3/photo/09-photo-complexe-bruit.png',
         'format': 'png',
         'n_colors': 8,
         'remove_bg': True,
@@ -118,7 +118,7 @@ TESTS: list[dict[str, Any]] = [
     },
     {
         'test_id': 'T06',
-        'file': 'jpeg/12-logo-formes-simple.jpg',
+        'file': 'niveau1/logo/12-logo-formes-simple.jpg',
         'format': 'jpeg',
         'n_colors': 6,
         'remove_bg': False,
@@ -127,7 +127,7 @@ TESTS: list[dict[str, Any]] = [
     },
     {
         'test_id': 'T07',
-        'file': 'webp/test-logo.webp',
+        'file': 'niveau1/logo/test-logo.webp',
         'format': 'webp',
         'n_colors': 5,
         'remove_bg': False,
@@ -136,7 +136,7 @@ TESTS: list[dict[str, Any]] = [
     },
     {
         'test_id': 'T08',
-        'file': 'svg/01-circle-simple.svg',
+        'file': 'niveau1/geometrique/01-circle-simple.svg',
         'format': 'svg',
         'n_colors': None,
         'remove_bg': False,
@@ -145,7 +145,7 @@ TESTS: list[dict[str, Any]] = [
     },
     {
         'test_id': 'T09',
-        'file': 'svg/07-logo-atelier-8couleurs.svg',
+        'file': 'niveau2/ecusson/07-logo-atelier-8couleurs.svg',
         'format': 'svg',
         'n_colors': None,
         'remove_bg': False,
@@ -154,7 +154,7 @@ TESTS: list[dict[str, Any]] = [
     },
     {
         'test_id': 'T10',
-        'file': 'svg/06-text-outline.svg',
+        'file': 'niveau2/texte/06-text-outline.svg',
         'format': 'svg',
         'n_colors': None,
         'remove_bg': False,
@@ -163,7 +163,7 @@ TESTS: list[dict[str, Any]] = [
     },
     {
         'test_id': 'T11',
-        'file': 'pdf/test-logo.pdf',
+        'file': 'niveau2/logo/test-logo.pdf',
         'format': 'pdf',
         'n_colors': 6,
         'remove_bg': False,
@@ -172,7 +172,7 @@ TESTS: list[dict[str, Any]] = [
     },
     {
         'test_id': 'T12',
-        'file': 'pdf/test-scanned-pdf.pdf',
+        'file': 'niveau2/scan/test-scanned-pdf.pdf',
         'format': 'pdf',
         'n_colors': 4,
         'remove_bg': False,
@@ -181,7 +181,7 @@ TESTS: list[dict[str, Any]] = [
     },
     {
         'test_id': 'T13',
-        'file': 'svg/08-texte-fin-contours.svg',
+        'file': 'niveau3/texte/08-texte-fin-contours.svg',
         'format': 'svg',
         'n_colors': None,
         'remove_bg': False,
@@ -190,7 +190,7 @@ TESTS: list[dict[str, Any]] = [
     },
     {
         'test_id': 'T14',
-        'file': 'pdf/test-vectoriel-complexe.pdf',
+        'file': 'niveau3/logo/test-vectoriel-complexe.pdf',
         'format': 'pdf',
         'n_colors': 6,
         'remove_bg': False,
@@ -199,7 +199,7 @@ TESTS: list[dict[str, Any]] = [
     },
     {
         'test_id': 'T15',
-        'file': 'png/11-logo-transparent-alpha.png',
+        'file': 'niveau2/logo/11-logo-transparent-alpha.png',
         'format': 'png',
         'n_colors': 4,
         'remove_bg': False,
@@ -208,7 +208,7 @@ TESTS: list[dict[str, Any]] = [
     },
     {
         'test_id': 'T16',
-        'file': 'pdf/logo gravo clés.pdf',
+        'file': 'niveau3/logo/logo gravo clés.pdf',
         'format': 'pdf',
         'n_colors': 6,
         'remove_bg': False,
@@ -217,7 +217,7 @@ TESTS: list[dict[str, Any]] = [
     },
     {
         'test_id': 'T17',
-        'file': 'svg/02-star-5pts.svg',
+        'file': 'niveau1/geometrique/02-star-5pts.svg',
         'format': 'svg',
         'n_colors': None,
         'remove_bg': False,
@@ -226,7 +226,7 @@ TESTS: list[dict[str, Any]] = [
     },
     {
         'test_id': 'T18',
-        'file': 'svg/05-flower-paths.svg',
+        'file': 'niveau1/geometrique/05-flower-paths.svg',
         'format': 'svg',
         'n_colors': None,
         'remove_bg': False,
@@ -235,7 +235,7 @@ TESTS: list[dict[str, Any]] = [
     },
     {
         'test_id': 'T19',
-        'file': 'png/02-formes-couleurs.png',
+        'file': 'niveau2/geometrique/02-formes-couleurs.png',
         'format': 'png',
         'n_colors': 4,
         'remove_bg': True,
@@ -244,7 +244,7 @@ TESTS: list[dict[str, Any]] = [
     },
     {
         'test_id': 'T20',
-        'file': 'svg/03-geometric-multicolor.svg',
+        'file': 'niveau2/geometrique/03-geometric-multicolor.svg',
         'format': 'svg',
         'n_colors': None,
         'remove_bg': False,

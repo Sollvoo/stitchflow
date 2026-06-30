@@ -119,7 +119,7 @@
   {% endif %}
 
   <!-- Contenu principal -->
-  <main class="flex-1 container mx-auto px-4 py-10 max-w-5xl w-full">
+  <main class="flex-1 container mx-auto px-4 py-10 {% block main_max_w %}max-w-5xl{% endblock %} w-full">
     {% block content %}{% endblock %}
   </main>
 

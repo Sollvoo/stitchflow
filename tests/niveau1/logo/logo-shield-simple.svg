@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 340" width="300" height="340">
+  <polygon points="150,10 290,70 290,180 150,330 10,180 10,70" fill="#2c3e50"/>
+  <polygon points="150,10 290,70 290,180 150,330 10,180 10,70" fill="none" stroke="#f39c12" stroke-width="8"/>
+  <polygon points="150,40 260,90 260,175 150,300 40,175 40,90" fill="#34495e"/>
+  <text x="150" y="175" font-family="Arial Black, sans-serif" font-size="80" font-weight="bold"
+        fill="#f39c12" text-anchor="middle" dominant-baseline="middle">S</text>
+  <line x1="80" y1="220" x2="220" y2="220" stroke="#f39c12" stroke-width="3"/>
+  <text x="150" y="248" font-family="Arial, sans-serif" font-size="22"
+        fill="#ecf0f1" text-anchor="middle">PROTECT</text>
+</svg>

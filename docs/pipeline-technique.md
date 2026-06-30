@@ -22,16 +22,23 @@ source_svg_path   Vectorisation          Extraction SVG
                         ▼
               [Pipeline SVG → PES commun]
                         │
-           1. validate_svg_content()
-           2. remove_background_fill()        ← raster seulement
-           3. filter_micro_paths()
-           4. reorder_svg_paths_for_minimal_jumps()
-           5. group_paths_by_color()
-           6. scale_svg_to_width_mm()         ← si target_width_mm défini
-           7. force_max_svg_colors(max=10)
-           8. snap_svg_colors_to_brother_palette()
-           9. group_paths_by_color()          ← bis après fusion
-          10. normalize_stroke_only_paths()
+           0. remove_excluded_colors_from_svg()  ← si couleurs exclues
+           1. prepare_svg_for_inkstitch()         ← normalisation complète
+              ├─ Inkscape CLI : object-to-path, clone-unlink,
+              │   selection-ungroup, object-to-path×2, vacuum-defs
+              ├─ _inline_svg_styles()     ← style= CSS → attributs explicites
+              ├─ _remove_invisible_elements()  ← display:none, opacity:0, fill:none
+              └─ _strip_clip_path_refs()  ← retire clip-path et mask
+           2. validate_svg_content()
+           3. remove_background_fill()        ← raster seulement
+           4. filter_micro_paths()
+           5. reorder_svg_paths_for_minimal_jumps()
+           6. group_paths_by_color()
+           7. scale_svg_to_width_mm()         ← si target_width_mm défini
+           8. force_max_svg_colors(max=10)
+           9. snap_svg_colors_to_brother_palette()
+          10. group_paths_by_color()          ← bis après fusion
+          11. normalize_stroke_only_paths()
                         │
                         ▼
               convert_svg_to_pes()  [Ink/Stitch CLI]
@@ -104,18 +111,40 @@ source_svg_path   Vectorisation          Extraction SVG
 
 | Étape | Fonction | Description |
 |-------|----------|-------------|
-| 1 | `validate_svg_content()` | Vérifie éléments brodables (path/rect/circle...) avec fill ou stroke |
-| 2 | `remove_background_fill()` | Supprime fills blanc (L*>92) couvrant >85% viewBox. ⚠️ Seulement pour raster, pas SVG direct. Ne supprime pas les shapes avec >12 segments SVG (formes de design). |
-| 3 | `filter_micro_paths()` | Supprime paths < 0.5 mm² (bruit vectorisation) |
-| 4 | `reorder_svg_paths_for_minimal_jumps()` | Greedy nearest-neighbor sur centroids → minimise sauts |
-| 5 | `group_paths_by_color()` | Regroupe paths plats (VTracer) par couleur → moins de changements fil |
-| 6 | `scale_svg_to_width_mm()` | Redimensionne à target_width_mm (ratio conservé) |
-| 7 | `force_max_svg_colors(10)` | Fusionne itérativement couleurs Lab les plus proches → ≤10 fils (Brother PR1050X) |
-| 8 | `snap_svg_colors_to_brother_palette()` | Snappe fill + stroke → fil Brother le plus proche (CIE Lab). Palette : InkStitch Brother Embroidery.gpl |
-| 9 | `group_paths_by_color()` | Re-groupement après fusion couleurs |
-| 10 | `normalize_stroke_only_paths()` | Convertit paths stroke-only (fill=none, stroke=#hex) en fill=#hex. Rend le texte vectorisé brodable. |
+| 0 | `remove_excluded_colors_from_svg()` | Supprime les couleurs exclues par l'utilisateur |
+| 1 | `prepare_svg_for_inkstitch()` | **Normalisation complète** — voir détail ci-dessous |
+| 2 | `validate_svg_content()` | Vérifie éléments brodables (path/rect/circle...) avec fill ou stroke |
+| 3 | `remove_background_fill()` | Supprime fills blanc (L*>92) couvrant >85% viewBox. ⚠️ Seulement pour raster. |
+| 4 | `filter_micro_paths()` | Supprime paths < 0.5 mm² (bruit vectorisation) |
+| 5 | `reorder_svg_paths_for_minimal_jumps()` | Greedy nearest-neighbor sur centroids → minimise sauts |
+| 6 | `group_paths_by_color()` | Regroupe paths plats (VTracer) par couleur → moins de changements fil |
+| 7 | `scale_svg_to_width_mm()` | Redimensionne à target_width_mm (ratio conservé) |
+| 8 | `force_max_svg_colors(10)` | Fusionne itérativement couleurs Lab les plus proches → ≤10 fils |
+| 9 | `snap_svg_colors_to_brother_palette()` | Snappe fill + stroke → fil Brother le plus proche (CIE Lab) |
+| 10 | `group_paths_by_color()` | Re-groupement après fusion couleurs |
+| 11 | `normalize_stroke_only_paths()` | Convertit paths stroke-only en fill. Rend le texte vectorisé brodable. |
 
 **Ordre critique :** `force_max_colors` AVANT `snap` (réduction d'abord, snap sur couleurs réduites = plus précis).
+
+#### Détail étape 1 : `prepare_svg_for_inkstitch()`
+
+**Fichier :** `conversions/services/svg_utils.py`
+
+Deux sous-étapes exécutées systématiquement :
+
+**A — Inkscape CLI** (si Inkscape disponible, timeout 60s) :
+```
+select-all;object-to-path      → textes, formes géométriques → paths
+select-all;clone-unlink         → <use> et clones → éléments standalone
+select-all;selection-ungroup    → aplatit les groupes, applique les transforms imbriqués
+select-all;object-to-path       → 2ème passe pour les éléments nouvellement exposés
+vacuum-defs                     → nettoie les <defs> inutilisées
+```
+
+**B — Python lxml-free** (toujours, même sans Inkscape) :
+- `_inline_svg_styles()` : `style="fill:red"` → attribut `fill="#ff0000"` explicite. Normalise aussi les couleurs nommées et `rgb(r,g,b)`.
+- `_remove_invisible_elements()` : supprime `display:none`, `visibility:hidden`, `opacity:0`, et `fill:none` sans stroke.
+- `_strip_clip_path_refs()` : retire les attributs `clip-path=` et `mask=` (éléments brodés en totalité, sans clipping).
 
 ### 5. Conversion Ink/Stitch
 
@@ -231,4 +260,40 @@ Si absent → snap désactivé silencieusement (log WARNING).
 
 ---
 
-*Dernière mise à jour : Phase 6 — corrections qualité + paramètres adaptatifs*
+## Éditeur SVG avancé (Phase 11)
+
+L'éditeur permet de modifier le SVG vectorisé **avant** la conversion finale Ink/Stitch. Toutes les modifications se font in-place sur le fichier `vectorized_svg_file`.
+
+### Opérations disponibles
+
+| Opération | Route | Fonction service |
+|-----------|-------|-----------------|
+| Supprimer une couleur | `POST /<uuid>/svg/remove-color/` | `remove_excluded_colors_from_svg()` |
+| Fusionner deux couleurs | `POST /<uuid>/svg/merge-colors/` | `merge_svg_colors()` |
+| Remapper vers palette Brother | `POST /<uuid>/svg/change-color/` | `change_svg_color()` |
+| Réordonner les couches | `POST /<uuid>/svg/reorder-colors/` | `reorder_svg_colors()` |
+| Changer type de point | `POST /<uuid>/svg/set-stitch-type/` | `set_stitch_type()` |
+| Régler la densité | `POST /<uuid>/svg/set-density/` | `set_stitch_density()` |
+| Annuler (undo) | `POST /<uuid>/svg/undo/` | `undo_svg()` |
+| Rétablir (redo) | `POST /<uuid>/svg/redo/` | `redo_svg()` |
+| Valider → PES | `POST /<uuid>/svg/validate/` | `finalize_svg_to_pes.delay()` |
+
+### Attributs Ink/Stitch injectés dans le SVG
+
+| Paramètre | Attribut SVG | Valeurs |
+|-----------|-------------|---------|
+| Type de point (contour) | `inkstitch:stroke_method` | `running_stitch` |
+| Densité | `inkstitch:row_spacing_mm` | `0.20` → `1.00` (défaut `0.40`) |
+
+Le namespace `http://inkstitch.org/namespace` est déclaré automatiquement sur l'élément `<svg>` racine lors de la première injection d'attributs Ink/Stitch.
+
+### Historique undo/redo
+
+Avant chaque opération d'édition, un snapshot du SVG est sauvegardé dans `media/conversions/snapshots/{job_id}/snap_N.svg`. Le stack (max 20 niveaux) est stocké dans `ConversionJob.conversion_metadata['svg_history']` :
+```json
+{"past": ["conversions/snapshots/.../snap_0.svg", ...], "future": []}
+```
+
+---
+
+*Dernière mise à jour : Phase 11 — éditeur avancé (undo/redo, réordonnement, type de point, densité)*

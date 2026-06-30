@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 200" width="480" height="200">
+  <rect width="480" height="200" fill="#2c3e50"/>
+  <rect x="0"   y="0" width="160" height="200" fill="#e74c3c"/>
+  <rect x="160" y="0" width="160" height="200" fill="#ecf0f1"/>
+  <rect x="320" y="0" width="160" height="200" fill="#3498db"/>
+  <text x="80"  y="140" font-family="Arial Black,sans-serif" font-size="130" font-weight="900"
+        fill="white" text-anchor="middle">1</text>
+  <text x="240" y="140" font-family="Arial Black,sans-serif" font-size="130" font-weight="900"
+        fill="#2c3e50" text-anchor="middle">2</text>
+  <text x="400" y="140" font-family="Arial Black,sans-serif" font-size="130" font-weight="900"
+        fill="white" text-anchor="middle">3</text>
+</svg>

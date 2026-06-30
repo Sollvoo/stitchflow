@@ -3,3 +3,9 @@
 
 @source "../../../src/core/templates/**/*.html";
 @source "../../../src/conversions/templates/**/*.html";
+@source "../../../src/users/templates/**/*.html";
+
+/* SortableJS drag & drop */
+.sortable-ghost { opacity: 0.35; }
+.sortable-chosen { background-color: color-mix(in oklch, var(--color-primary, #570df8) 10%, transparent); }
+.sortable-drag { box-shadow: 0 4px 14px oklch(0 0 0 / 0.15); border-radius: 0.5rem; }

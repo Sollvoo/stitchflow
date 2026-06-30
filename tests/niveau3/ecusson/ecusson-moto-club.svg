@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 560" width="500" height="560">
+  <rect width="500" height="560" fill="#111"/>
+  <!-- Forme losange/bouclier moto -->
+  <polygon points="250,20 480,180 480,380 250,540 20,380 20,180" fill="#1a1a1a"/>
+  <polygon points="250,20 480,180 480,380 250,540 20,380 20,180"
+           fill="none" stroke="#ff6600" stroke-width="6"/>
+  <polygon points="250,45 455,190 455,370 250,515 45,370 45,190"
+           fill="none" stroke="#ff6600" stroke-width="1.5"/>
+  <!-- Flammes stylisées -->
+  <path d="M 130,380 Q 150,320 140,280 Q 170,330 160,280 Q 190,340 175,380 Z" fill="#ff6600"/>
+  <path d="M 370,380 Q 350,320 360,280 Q 330,330 340,280 Q 310,340 325,380 Z" fill="#ff6600"/>
+  <!-- Roue de moto centrale (cercles) -->
+  <circle cx="250" cy="270" r="100" fill="none" stroke="#ff6600" stroke-width="4"/>
+  <circle cx="250" cy="270" r="80"  fill="none" stroke="#888"    stroke-width="2"/>
+  <circle cx="250" cy="270" r="22"  fill="#ff6600"/>
+  <!-- Rayons -->
+  <line x1="250" y1="170" x2="250" y2="370" stroke="#888" stroke-width="2"/>
+  <line x1="150" y1="270" x2="350" y2="270" stroke="#888" stroke-width="2"/>
+  <line x1="179" y1="199" x2="321" y2="341" stroke="#888" stroke-width="2"/>
+  <line x1="321" y1="199" x2="179" y2="341" stroke="#888" stroke-width="2"/>
+  <!-- Texte haut -->
+  <path id="arc-top" d="M 75,265 A 175,175 0 0,1 425,265" fill="none"/>
+  <text font-family="Arial Black,sans-serif" font-size="26" font-weight="900"
+        fill="#ff6600" letter-spacing="4">
+    <textPath href="#arc-top" startOffset="10%">THUNDER RIDERS</textPath>
+  </text>
+  <!-- Texte bas -->
+  <path id="arc-bot" d="M 75,275 A 175,175 0 0,0 425,275" fill="none"/>
+  <text font-family="Arial,sans-serif" font-size="20" fill="#ccc" letter-spacing="3">
+    <textPath href="#arc-bot" startOffset="22%">EST. 2001 · LYON</textPath>
+  </text>
+</svg>

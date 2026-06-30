@@ -324,6 +324,12 @@ class JobDetailView(DetailView):
     template_name = 'conversions/detail.html'
     context_object_name = 'job'
 
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        if self.object.status == ConversionJob.Status.AWAITING_SVG_VALIDATION:
+            ctx.update(_build_svg_editor_context(self.object))
+        return ctx
+
 
 class JobStatusView(View):
     """Renvoie uniquement le fragment de statut (utilisé par HTMX)."""
@@ -708,44 +714,66 @@ class JobDownloadView(View):
         return response
 
 
-def _render_svg_editor_response(request: HttpRequest, job: ConversionJob) -> HttpResponse:
-    from django.template.loader import render_to_string
-    from .services.svg_utils import get_svg_colors_with_count
+def _build_svg_editor_context(job: ConversionJob) -> dict:
+    from .services.svg_utils import get_svg_colors_with_count, get_stitch_types, get_stitch_densities
     from .services.thread_color import get_snap_preview, get_brother_palette
 
     svg_path = Path(settings.MEDIA_ROOT) / job.vectorized_svg_file.name if job.vectorized_svg_file else None
     svg_colors = get_svg_colors_with_count(svg_path) if svg_path and svg_path.exists() else []
     snap_preview = get_snap_preview([c['hex'] for c in svg_colors])
     snap_by_hex = {s['svg_hex']: s for s in snap_preview}
+    stitch_types = get_stitch_types(svg_path) if svg_path and svg_path.exists() else {}
+    densities = get_stitch_densities(svg_path) if svg_path and svg_path.exists() else {}
+
     colors_with_snap = [
         {
             **c,
             'brother_hex': snap_by_hex.get(c['hex'], {}).get('brother_hex', c['hex']),
             'brother_name': snap_by_hex.get(c['hex'], {}).get('brother_name', ''),
             'collision': snap_by_hex.get(c['hex'], {}).get('collision', False),
+            'stitch_type': stitch_types.get(c['hex'], 'auto_fill'),
+            'density': densities.get(c['hex'], 0.4),
         }
         for c in svg_colors
     ]
-    brother_palette = get_brother_palette()
+    history = job.conversion_metadata.get('svg_history', {'past': [], 'future': []})
 
+    return {
+        'svg_colors': svg_colors,
+        'colors_with_snap': colors_with_snap,
+        'brother_palette': get_brother_palette(),
+        'can_undo': bool(history.get('past')),
+        'can_redo': bool(history.get('future')),
+    }
+
+
+def _render_svg_editor_response(request: HttpRequest, job: ConversionJob) -> HttpResponse:
+    from django.template.loader import render_to_string
+
+    ctx = _build_svg_editor_context(job)
     html = render_to_string(
         'conversions/partials/conversion_status.html',
-        {
-            'job': job,
-            'svg_colors': svg_colors,
-            'colors_with_snap': colors_with_snap,
-            'brother_palette': brother_palette,
-        },
+        {'job': job, **ctx},
         request=request,
     )
     return HttpResponse(html, content_type='text/html')
+
+
+def _snapshot_before_edit(job: ConversionJob, svg_path: Path) -> None:
+    """Sauvegarde un snapshot SVG avant chaque opération d'édition."""
+    from .services.svg_utils import save_svg_snapshot
+    if not svg_path.exists():
+        return
+    history = job.conversion_metadata.get('svg_history', {'past': [], 'future': []})
+    new_history = save_svg_snapshot(svg_path, Path(settings.MEDIA_ROOT), str(job.id), history)
+    job.conversion_metadata['svg_history'] = new_history
+    job.save(update_fields=['conversion_metadata'])
 
 
 class SvgRemoveColorView(View):
     """Supprime tous les éléments d'une couleur donnée du SVG vectorisé."""
 
     def post(self, request: HttpRequest, pk) -> HttpResponse:
-        from django.conf import settings as _s
         from .services.svg_utils import remove_excluded_colors_from_svg
 
         job = get_object_or_404(ConversionJob, pk=pk)
@@ -756,12 +784,11 @@ class SvgRemoveColorView(View):
         if not color.startswith('#'):
             return HttpResponse(status=400)
 
-        svg_path = Path(_s.MEDIA_ROOT) / job.vectorized_svg_file.name
+        svg_path = Path(settings.MEDIA_ROOT) / job.vectorized_svg_file.name
         if svg_path.exists():
+            _snapshot_before_edit(job, svg_path)
             n = remove_excluded_colors_from_svg(svg_path, [color])
             if n > 0:
-                from django.utils import timezone
-                job.updated_at = timezone.now()
                 job.save(update_fields=['updated_at'])
 
         return _render_svg_editor_response(request, job)
@@ -771,7 +798,6 @@ class SvgMergeColorsView(View):
     """Fusionne deux couleurs du SVG vectorisé (source → target)."""
 
     def post(self, request: HttpRequest, pk) -> HttpResponse:
-        from django.conf import settings as _s
         from .services.svg_utils import merge_svg_colors
 
         job = get_object_or_404(ConversionJob, pk=pk)
@@ -783,12 +809,11 @@ class SvgMergeColorsView(View):
         if not source.startswith('#') or not target.startswith('#') or source == target:
             return HttpResponse(status=400)
 
-        svg_path = Path(_s.MEDIA_ROOT) / job.vectorized_svg_file.name
+        svg_path = Path(settings.MEDIA_ROOT) / job.vectorized_svg_file.name
         if svg_path.exists():
+            _snapshot_before_edit(job, svg_path)
             n = merge_svg_colors(svg_path, source, target)
             if n > 0:
-                from django.utils import timezone
-                job.updated_at = timezone.now()
                 job.save(update_fields=['updated_at'])
 
         return _render_svg_editor_response(request, job)
@@ -798,7 +823,6 @@ class SvgChangeColorView(View):
     """Remplace une couleur SVG par un fil Brother choisi par l'utilisateur."""
 
     def post(self, request: HttpRequest, pk) -> HttpResponse:
-        from django.conf import settings as _s
         from .services.svg_utils import change_svg_color
         import re as _re
 
@@ -812,12 +836,153 @@ class SvgChangeColorView(View):
         if not _hex_re.match(old_color) or not _hex_re.match(new_color) or old_color == new_color:
             return HttpResponse(status=400)
 
-        svg_path = Path(_s.MEDIA_ROOT) / job.vectorized_svg_file.name
+        svg_path = Path(settings.MEDIA_ROOT) / job.vectorized_svg_file.name
         if svg_path.exists():
+            _snapshot_before_edit(job, svg_path)
             n = change_svg_color(svg_path, old_color, new_color)
             if n > 0:
-                from django.utils import timezone
-                job.updated_at = timezone.now()
+                job.save(update_fields=['updated_at'])
+
+        return _render_svg_editor_response(request, job)
+
+
+class SvgUndoView(View):
+    """Annule la dernière opération d'édition SVG."""
+
+    def post(self, request: HttpRequest, pk) -> HttpResponse:
+        from .services.svg_utils import undo_svg
+
+        job = get_object_or_404(ConversionJob, pk=pk)
+        if job.status != ConversionJob.Status.AWAITING_SVG_VALIDATION or not job.vectorized_svg_file:
+            return HttpResponse(status=400)
+
+        svg_path = Path(settings.MEDIA_ROOT) / job.vectorized_svg_file.name
+        history = job.conversion_metadata.get('svg_history', {'past': [], 'future': []})
+        success, new_history = undo_svg(svg_path, Path(settings.MEDIA_ROOT), history)
+        if success:
+            job.conversion_metadata['svg_history'] = new_history
+            job.save(update_fields=['conversion_metadata', 'updated_at'])
+
+        return _render_svg_editor_response(request, job)
+
+
+class SvgRedoView(View):
+    """Rétablit la dernière opération annulée."""
+
+    def post(self, request: HttpRequest, pk) -> HttpResponse:
+        from .services.svg_utils import redo_svg
+
+        job = get_object_or_404(ConversionJob, pk=pk)
+        if job.status != ConversionJob.Status.AWAITING_SVG_VALIDATION or not job.vectorized_svg_file:
+            return HttpResponse(status=400)
+
+        svg_path = Path(settings.MEDIA_ROOT) / job.vectorized_svg_file.name
+        history = job.conversion_metadata.get('svg_history', {'past': [], 'future': []})
+        success, new_history = redo_svg(svg_path, Path(settings.MEDIA_ROOT), history)
+        if success:
+            job.conversion_metadata['svg_history'] = new_history
+            job.save(update_fields=['conversion_metadata', 'updated_at'])
+
+        return _render_svg_editor_response(request, job)
+
+
+class SvgResetView(View):
+    """Restaure le SVG à son état initial (avant toute édition)."""
+
+    def post(self, request: HttpRequest, pk) -> HttpResponse:
+        from .services.svg_utils import reset_svg
+
+        job = get_object_or_404(ConversionJob, pk=pk)
+        if job.status != ConversionJob.Status.AWAITING_SVG_VALIDATION or not job.vectorized_svg_file:
+            return HttpResponse(status=400)
+
+        svg_path = Path(settings.MEDIA_ROOT) / job.vectorized_svg_file.name
+        history = job.conversion_metadata.get('svg_history', {'past': [], 'future': []})
+        success, new_history = reset_svg(svg_path, Path(settings.MEDIA_ROOT), history)
+        if success:
+            job.conversion_metadata['svg_history'] = new_history
+            job.save(update_fields=['conversion_metadata', 'updated_at'])
+
+        return _render_svg_editor_response(request, job)
+
+
+class SvgReorderColorsView(View):
+    """Réordonne les couches de couleurs du SVG (ordre de broderie)."""
+
+    def post(self, request: HttpRequest, pk) -> HttpResponse:
+        from .services.svg_utils import reorder_svg_colors
+        import json as _json
+
+        job = get_object_or_404(ConversionJob, pk=pk)
+        if job.status != ConversionJob.Status.AWAITING_SVG_VALIDATION or not job.vectorized_svg_file:
+            return HttpResponse(status=400)
+
+        try:
+            ordered = _json.loads(request.POST.get('colors', '[]'))
+        except (ValueError, TypeError):
+            return HttpResponse(status=400)
+
+        if not isinstance(ordered, list) or not all(isinstance(h, str) for h in ordered):
+            return HttpResponse(status=400)
+
+        svg_path = Path(settings.MEDIA_ROOT) / job.vectorized_svg_file.name
+        if svg_path.exists():
+            _snapshot_before_edit(job, svg_path)
+            reorder_svg_colors(svg_path, ordered)
+            job.save(update_fields=['updated_at'])
+
+        return _render_svg_editor_response(request, job)
+
+
+class SvgSetStitchTypeView(View):
+    """Définit le type de point (auto_fill / running_stitch) pour une couleur."""
+
+    def post(self, request: HttpRequest, pk) -> HttpResponse:
+        from .services.svg_utils import set_stitch_type
+
+        job = get_object_or_404(ConversionJob, pk=pk)
+        if job.status != ConversionJob.Status.AWAITING_SVG_VALIDATION or not job.vectorized_svg_file:
+            return HttpResponse(status=400)
+
+        color = request.POST.get('color', '').strip().lower()
+        stitch_type = request.POST.get('stitch_type', '').strip()
+        if not color.startswith('#') or stitch_type not in ('auto_fill', 'running_stitch'):
+            return HttpResponse(status=400)
+
+        svg_path = Path(settings.MEDIA_ROOT) / job.vectorized_svg_file.name
+        if svg_path.exists():
+            _snapshot_before_edit(job, svg_path)
+            n = set_stitch_type(svg_path, color, stitch_type)
+            if n > 0:
+                job.save(update_fields=['updated_at'])
+
+        return _render_svg_editor_response(request, job)
+
+
+class SvgSetDensityView(View):
+    """Définit la densité de point (mm entre rangées) pour une couleur."""
+
+    def post(self, request: HttpRequest, pk) -> HttpResponse:
+        from .services.svg_utils import set_stitch_density
+
+        job = get_object_or_404(ConversionJob, pk=pk)
+        if job.status != ConversionJob.Status.AWAITING_SVG_VALIDATION or not job.vectorized_svg_file:
+            return HttpResponse(status=400)
+
+        color = request.POST.get('color', '').strip().lower()
+        try:
+            density = float(request.POST.get('density', ''))
+        except (ValueError, TypeError):
+            return HttpResponse(status=400)
+
+        if not color.startswith('#') or not (0.1 <= density <= 2.0):
+            return HttpResponse(status=400)
+
+        svg_path = Path(settings.MEDIA_ROOT) / job.vectorized_svg_file.name
+        if svg_path.exists():
+            _snapshot_before_edit(job, svg_path)
+            n = set_stitch_density(svg_path, color, density)
+            if n > 0:
                 job.save(update_fields=['updated_at'])
 
         return _render_svg_editor_response(request, job)

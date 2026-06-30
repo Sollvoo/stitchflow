@@ -2,6 +2,8 @@
 
 {% block title %}Mes conversions{% endblock %}
 
+{% block main_max_w %}max-w-7xl{% endblock %}
+
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 py-8">
 
@@ -74,7 +76,7 @@
   {% if page_obj.object_list %}
   <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
     {% for job in page_obj %}
-    <div class="card bg-base-100 shadow-sm border border-base-200 hover:shadow-md transition-shadow group">
+    <div class="card bg-base-100 shadow-sm border border-base-200 hover:shadow-md transition-shadow group overflow-hidden">
 
       <!-- Thumbnail -->
       <a href="{% url 'conversions:detail' job.id %}" class="block aspect-square bg-base-200 overflow-hidden rounded-t-2xl">

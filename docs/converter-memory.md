@@ -2,7 +2,7 @@
 
 ## [LIRE EN PREMIER — CONTEXTE RAPIDE POUR L'IA]
 
-**Score actuel (S7) :** 95.7/100 sur 20 tests (2026-06-20)
+**Score actuel (S7) :** 95.7/100 sur 20 tests (2026-06-20) — S8 = session infra/bugs, benchmark à relancer
 **Score S6 (18 tests) :** 95.1/100
 **Objectif :** 95.0/100 sur les tests de référence (**ATTEINT Session 6, maintenu S7**)
 
@@ -33,7 +33,7 @@ Notes critiques :
 - S5 Iter 2 : `corner_threshold` adaptatif VTracer (n≤3→80, n>8→50) → neutre sur les scores de benchmark, conservé pour la logique (pas de régression, mais pas de gain mesurable sur T01/T03)
 - S7 : Fix thread_color.py pour T01 ΔLab=28.4 → IMPOSSIBLE, le parsing GPL est correct. Lacune palette Brother entre L=34 (Pewter) et L=82 (Warm Gray) = aucun fil gris moyen dans la palette.
 
-**Prochaines priorités (pour Session 8) :**
+**Prochaines priorités (pour Session 9 — audit calibration obligatoire S9) :**
 1. **T03=94** (écusson 12 col, threads=80 9 fils) : tenter réduction à 8 fils via `force_max_svg_colors(8)` dès que n_colors≥10 → t_score 80→100 potentiel, mais risque perte couleurs distinctives.
 2. **T11=94** (PDF vectoriel, color_fidelity=92 ΔLab=7.1, coverage=66 4/6) : investiguer pourquoi seules 4/6 couleurs arrivent dans le SVG final depuis un PDF vectoriel.
 3. **T14=90** (PDF vectoriel complexe 120mm, threads=80 8 fils, color_fidelity=80 7/8 fils) : un fil disparaît probablement via snap→group_colors. Diagnostiquer avec logs détaillés.
@@ -56,6 +56,9 @@ Notes critiques :
 | 5 | 2026-06-18 | 94.1 | 94.4 | +0.3 | 16 |
 | 6 | 2026-06-18 | 94.4 | 95.1 | +0.7 | 18 |
 | 7 | 2026-06-20 | 95.1 | **95.7** | **+0.6** | 20 |
+| 8 | 2026-06-29 | 95.7 | à mesurer | — | 20 |
+
+Note S8 : session infrastructure — bug VTracer Python API corrigé (TypeError out_path), réorganisation tests par difficulté (niveau1/2/3/impossible), amélioration preprocessing texte PNG (SMOOTH supprimé pour détails fins), stroke-only thin paths convertis en fill (fix preview vide texte contours). Relancer le benchmark pour mesurer l'impact.
 
 Note S4 : le delta légèrement négatif reflète l'ajout de 2 tests Hard (T13=94, T14=90). Sur les 12 tests existants, le score est passé de 94.2 à 94.4 grâce à la correction jumps (T05 89→91).
 
@@ -71,26 +74,26 @@ Note S7 : le delta +0.6 intègre 2 calibrations scoring (coverage floor 55→65,
 
 | ID | Fichier | Format | Params | Score S4 | Score S5 | Score S6 | Score S7 | Delta S7 | Niveau |
 |----|---------|--------|--------|----------|----------|----------|----------|----------|--------|
-| T01 | png/06-logo-monochrome-blanc.png | PNG | n=2,bg,80mm | 91 | 92 | 92 | 92 | 0 | Medium |
-| T02 | png/03-logo-multicolore.png | PNG | n=5,80mm | 97 | 97 | 97 | 97 | 0 | Easy-Medium |
-| T03 | png/07-ecusson-12couleurs.png | PNG | n=10,100mm | 93 | 94 | 94 | 94 | 0 | Hard |
-| T04 | png/08-texte-fond-colore.png | PNG | n=4,60mm | 94 | 94 | 94 | **95** | **+1** | Medium |
-| T05 | png/09-photo-complexe-bruit.png | PNG | n=8,bg,100mm | 91 | 91 | 91 | 91 | 0 | Hard/Ceiling |
-| T06 | jpeg/12-logo-formes-simple.jpg | JPEG | n=6,80mm | 95 | 95 | 95 | 95 | 0 | Easy-Medium |
-| T07 | webp/test-logo.webp | WebP | n=5,80mm | 94 | 94 | 94 | **95** | **+1** | Easy-Medium |
-| T08 | svg/01-circle-simple.svg | SVG | direct,80mm | 100 | 100 | 100 | 100 | 0 | Easy |
-| T09 | svg/07-logo-atelier-8couleurs.svg | SVG | direct,100mm | 95 | 95 | 95 | 95 | 0 | Medium |
-| T10 | svg/06-text-outline.svg | SVG | direct,80mm | 95 | 95 | 95 | 95 | 0 | Medium |
-| T11 | pdf/test-logo.pdf | PDF | n=6,100mm | 94 | 94 | 94 | 94 | 0 | Medium |
-| T12 | pdf/test-scanned-pdf.pdf | PDF | n=4,80mm | 94 | 94 | 94 | **95** | **+1** | Medium |
-| T13 | svg/08-texte-fin-contours.svg | SVG | direct,60mm | 94 | 94 | 94 | **96** | **+2** | Hard |
-| T14 | pdf/test-vectoriel-complexe.pdf | PDF | n=6,120mm | 90 | 90 | 90 | 90 | 0 | Hard |
-| T15 | png/11-logo-transparent-alpha.png | PNG | n=4,80mm | — | 94 | 94 | **95** | **+1** | Medium |
-| T16 | pdf/logo gravo clés.pdf | PDF | n=6,100mm | — | 98 | 98 | 98 | 0 | Hard |
-| T17 | svg/02-star-5pts.svg | SVG | direct,80mm | — | — | 100 | 100 | 0 | Easy |
-| T18 | svg/05-flower-paths.svg | SVG | direct,80mm | — | — | 100 | 100 | 0 | Easy |
-| T19 | png/02-formes-couleurs.png | PNG | n=4,bg,80mm | — | — | — | **97** | nouveau | Medium |
-| T20 | svg/03-geometric-multicolor.svg | SVG | direct,80mm | — | — | — | **100** | nouveau | Easy-Medium |
+| T01 | niveau2/logo/06-logo-monochrome-blanc.png | PNG | n=2,bg,80mm | 91 | 92 | 92 | 92 | 0 | Medium |
+| T02 | niveau1/logo/03-logo-multicolore.png | PNG | n=5,80mm | 97 | 97 | 97 | 97 | 0 | Easy-Medium |
+| T03 | niveau3/ecusson/07-ecusson-12couleurs.png | PNG | n=10,100mm | 93 | 94 | 94 | 94 | 0 | Hard |
+| T04 | niveau2/texte/08-texte-fond-colore.png | PNG | n=4,60mm | 94 | 94 | 94 | **95** | **+1** | Medium |
+| T05 | niveau3/photo/09-photo-complexe-bruit.png | PNG | n=8,bg,100mm | 91 | 91 | 91 | 91 | 0 | Hard/Ceiling |
+| T06 | niveau1/logo/12-logo-formes-simple.jpg | JPEG | n=6,80mm | 95 | 95 | 95 | 95 | 0 | Easy-Medium |
+| T07 | niveau1/logo/test-logo.webp | WebP | n=5,80mm | 94 | 94 | 94 | **95** | **+1** | Easy-Medium |
+| T08 | niveau1/geometrique/01-circle-simple.svg | SVG | direct,80mm | 100 | 100 | 100 | 100 | 0 | Easy |
+| T09 | niveau2/ecusson/07-logo-atelier-8couleurs.svg | SVG | direct,100mm | 95 | 95 | 95 | 95 | 0 | Medium |
+| T10 | niveau2/texte/06-text-outline.svg | SVG | direct,80mm | 95 | 95 | 95 | 95 | 0 | Medium |
+| T11 | niveau2/logo/test-logo.pdf | PDF | n=6,100mm | 94 | 94 | 94 | 94 | 0 | Medium |
+| T12 | niveau2/scan/test-scanned-pdf.pdf | PDF | n=4,80mm | 94 | 94 | 94 | **95** | **+1** | Medium |
+| T13 | niveau3/texte/08-texte-fin-contours.svg | SVG | direct,60mm | 94 | 94 | 94 | **96** | **+2** | Hard |
+| T14 | niveau3/logo/test-vectoriel-complexe.pdf | PDF | n=6,120mm | 90 | 90 | 90 | 90 | 0 | Hard |
+| T15 | niveau2/logo/11-logo-transparent-alpha.png | PNG | n=4,80mm | — | 94 | 94 | **95** | **+1** | Medium |
+| T16 | niveau3/logo/logo gravo clés.pdf | PDF | n=6,100mm | — | 98 | 98 | 98 | 0 | Hard |
+| T17 | niveau1/geometrique/02-star-5pts.svg | SVG | direct,80mm | — | — | 100 | 100 | 0 | Easy |
+| T18 | niveau1/geometrique/05-flower-paths.svg | SVG | direct,80mm | — | — | 100 | 100 | 0 | Easy |
+| T19 | niveau2/geometrique/02-formes-couleurs.png | PNG | n=4,bg,80mm | — | — | — | **97** | nouveau | Medium |
+| T20 | niveau2/geometrique/03-geometric-multicolor.svg | SVG | direct,80mm | — | — | — | **100** | nouveau | Easy-Medium |
 
 **Score moyen S4 : 94.1/100 (14 tests)**
 **Score moyen S5 : 94.4/100 (16 tests) — sur 14 tests comparables : 94.2/100**
@@ -234,7 +237,29 @@ Note S7 : le delta +0.6 intègre 2 calibrations scoring (coverage floor 55→65,
 - **T04 coverage=65** (1/4, floor relevé S7) : PNG texte blanc sur fond coloré, le texte blanc est filtré → 1 couleur correcte. Limite du contenu source.
 - **T07 coverage=65** (2/5, floor relevé S7) : logo fondamentalement 2 couleurs. Non résolvable par pipeline.
 - **T05 jumps** : 2.1% → j_score=65. Plafond naturel photo complexe. TSP interdit (effort élevé, ceiling naturel).
-- **T14 threads=80** (8 fils) + **color_fidelity=80** (7/8 fils, ΔLab=11.2) : un fil disparaît probablement via snap→group_colors sur ce PDF vectoriel complexe. À diagnostiquer S8.
+- **T14 threads=80** (8 fils) + **color_fidelity=80** (7/8 fils, ΔLab=11.2) : un fil disparaît probablement via snap→group_colors sur ce PDF vectoriel complexe. À diagnostiquer S9.
+
+### Session 8 — 2026-06-29
+
+**Fix 1 — Bug VTracer Python API** (`_vtracer_helper.py`)
+- Correction : `vtracer.convert_image_to_svg_py()` exigeait `out_path` en 2ème arg positionnel (API changée ≥0.6). Ajout de `svg_output_path` + suppression du bloc `with open()` redondant.
+- Raison : toute conversion PNG/JPEG/WebP échouait sur Windows (pas de CLI vtracer ARM64, potrace absent, seul fallback = VTracer Python) → TypeError bloquant.
+- Impact mesuré : conversions PNG à nouveau fonctionnelles sur Windows.
+
+**Fix 2 — Réorganisation tests par difficulté** (`tests/manual/`)
+- Correction : 28 fichiers déplacés de `png/`, `jpeg/`, `pdf/`, `svg/`, `webp/` vers `niveau1/{logo,geometrique,texte}`, `niveau2/{logo,geometrique,ecusson,texte,scan}`, `niveau3/{ecusson,photo,texte,logo}`, `impossible/`.
+- Raison : organisation par format empêchait d'évaluer la difficulté d'un coup d'œil. `impossible/` isole les cas non-brodables (gradients, photos réalistes). Benchmark `run_benchmark.py` mis à jour (20 nouveaux chemins).
+- Impact mesuré : neutre sur le score (refactoring structurel).
+
+**Fix 3 — Preprocessing texte PNG** (`png_processing.py`)
+- Correction : `preprocess_image()` appliquait `ImageFilter.SMOOTH` à toutes les images (tuait les détails fins). Ajout détection `_detect_fine_details()` : branche texte = sharpen 2.5 sans SMOOTH au lieu de smooth léger.
+- Raison : le lissage efface les traits fins avant vectorisation → texte illisible après vectorisation VTracer.
+- Impact mesuré : à mesurer S9 sur T04 (texte fond coloré).
+
+**Fix 4 — Stroke thin → fill** (`svg_utils.py`)
+- Correction : `normalize_stroke_only_paths()` faisait `continue` pour les strokes < 1mm → path restait `stroke-only` → Ink/Stitch l'ignorait → preview vide. Suppression du `continue` → tous les strokes colorés convertis en fill.
+- Raison : Ink/Stitch ignore les paths sans fill. Même un trait fin doit être converti en fill pour être brodé.
+- Impact mesuré : à mesurer S9 sur T13 (texte fin contours SVG).
 
 ---
 

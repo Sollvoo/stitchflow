@@ -28,15 +28,35 @@ class GradientNotSupportedError(Exception):
     pass
 
 
+def _find_pdftocairo() -> str | None:
+    """Cherche pdftocairo dans PATH puis dans vendor/ (Windows)."""
+    found = shutil.which("pdftocairo")
+    if found:
+        return found
+    try:
+        from django.conf import settings as djsettings
+
+        vendor_bin = getattr(djsettings, "POPPLER_BIN_PATH", None)
+        if vendor_bin:
+            candidate = Path(vendor_bin) / "pdftocairo.exe"
+            if candidate.exists():
+                return str(candidate)
+    except Exception:
+        pass
+    return None
+
+
 def extract_vector_svg_from_pdf(pdf_path: Path, output_svg: Path) -> None:
     """
-    Extrait les vecteurs du PDF en SVG via pdftocairo (poppler, déjà installé).
+    Extrait les vecteurs du PDF en SVG via pdftocairo (poppler).
     Première page uniquement. Timeout 30s.
     """
-    pdftocairo = shutil.which("pdftocairo")
+    pdftocairo = _find_pdftocairo()
     if not pdftocairo:
         raise PDFExtractionError(
-            "pdftocairo introuvable. Installez poppler : brew install poppler"
+            "pdftocairo introuvable. "
+            "macOS : brew install poppler | "
+            "Windows : choco install poppler (admin) ou placer les binaires dans vendor/poppler-*/Library/bin/"
         )
 
     result = subprocess.run(

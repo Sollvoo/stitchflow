@@ -99,7 +99,7 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
 DJANGO_VITE = {
     'default': {
         'dev_mode': config('VITE_DEV_MODE', default=False, cast=bool),
-        'dev_server_port': 5173,
+        'dev_server_port': 5174,
         'static_url_prefix': 'dist/',
         'manifest_path': BASE_DIR / 'frontend' / 'static' / 'dist' / '.vite' / 'manifest.json',
     }
@@ -113,12 +113,24 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_TRACK_STARTED = True
+# Windows : le prefork n'est pas supporté, forcer le pool solo
+CELERY_WORKER_POOL = 'solo'
 
 # Ink/Stitch — path to the inkstitch executable
 # On macOS after installation: typically ~/.config/inkscape/extensions/inkstitch/inkstitch
 # or the path configured after installing the Ink/Stitch extension
 INKSTITCH_EXECUTABLE = config('INKSTITCH_EXECUTABLE', default='inkstitch')
 INKSTITCH_TIMEOUT = config('INKSTITCH_TIMEOUT', default=300, cast=int)
+
+# Poppler (pdftocairo) — chemin vers les binaires vendored (Windows)
+# Fallback automatique : vendor/poppler-*/Library/bin/ si pdftocairo absent du PATH
+_poppler_vendor = BASE_DIR.parent / 'vendor'
+_poppler_candidates = sorted(_poppler_vendor.glob('poppler-*/Library/bin')) if _poppler_vendor.exists() else []
+POPPLER_BIN_PATH: Path | None = config(
+    'POPPLER_BIN_PATH',
+    default=str(_poppler_candidates[-1]) if _poppler_candidates else '',
+    cast=lambda v: Path(v) if v else None,
+)
 
 # Email — Gmail SMTP (configurer EMAIL_HOST_USER + EMAIL_HOST_PASSWORD dans .env)
 EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.smtp.EmailBackend')

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <rect width="400" height="400" fill="#1a1a2e"/>
+  <circle cx="200" cy="200" r="170" fill="none" stroke="#c9a84c" stroke-width="4"/>
+  <circle cx="200" cy="200" r="155" fill="none" stroke="#c9a84c" stroke-width="1.5"/>
+  <!-- S en fill -->
+  <text x="115" y="270" font-family="Georgia, serif" font-size="200" font-weight="bold"
+        fill="#c9a84c">S</text>
+  <!-- F en stroke-only (teste normalize_stroke_only_paths) -->
+  <text x="200" y="270" font-family="Georgia, serif" font-size="200" font-weight="bold"
+        fill="none" stroke="#ffffff" stroke-width="3">F</text>
+  <circle cx="200" cy="45"  r="5" fill="#c9a84c"/>
+  <circle cx="200" cy="355" r="5" fill="#c9a84c"/>
+  <circle cx="30"  cy="200" r="5" fill="#c9a84c"/>
+  <circle cx="370" cy="200" r="5" fill="#c9a84c"/>
+</svg>

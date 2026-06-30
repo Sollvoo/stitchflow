@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500" height="500">
+  <rect width="500" height="500" fill="#f5f0e8"/>
+  <!-- Cercle principal -->
+  <circle cx="250" cy="250" r="220" fill="#1c1c1c"/>
+  <circle cx="250" cy="250" r="220" fill="none" stroke="#8B1A1A" stroke-width="6"/>
+  <circle cx="250" cy="250" r="205" fill="none" stroke="#8B1A1A" stroke-width="1.5"/>
+  <!-- Hachures diagonales (texture vintage) -->
+  <clipPath id="clip-circle">
+    <circle cx="250" cy="250" r="200"/>
+  </clipPath>
+  <g clip-path="url(#clip-circle)">
+    <line x1="0"   y1="50"  x2="500" y2="550" stroke="#333" stroke-width="1.2"/>
+    <line x1="0"   y1="100" x2="500" y2="600" stroke="#333" stroke-width="1.2"/>
+    <line x1="0"   y1="150" x2="500" y2="650" stroke="#333" stroke-width="1.2"/>
+    <line x1="0"   y1="200" x2="500" y2="700" stroke="#333" stroke-width="1.2"/>
+    <line x1="0"   y1="250" x2="500" y2="750" stroke="#333" stroke-width="1.2"/>
+    <line x1="0"   y1="300" x2="500" y2="800" stroke="#333" stroke-width="1.2"/>
+    <line x1="-50" y1="0"   x2="450" y2="500" stroke="#333" stroke-width="1.2"/>
+    <line x1="-100" y1="0"  x2="400" y2="500" stroke="#333" stroke-width="1.2"/>
+    <line x1="-150" y1="0"  x2="350" y2="500" stroke="#333" stroke-width="1.2"/>
+    <line x1="50"  y1="0"   x2="550" y2="500" stroke="#333" stroke-width="1.2"/>
+    <line x1="100" y1="0"   x2="600" y2="500" stroke="#333" stroke-width="1.2"/>
+    <line x1="150" y1="0"   x2="650" y2="500" stroke="#333" stroke-width="1.2"/>
+  </g>
+  <!-- Zone centrale opaque pour le texte -->
+  <ellipse cx="250" cy="240" rx="175" ry="120" fill="#1c1c1c"/>
+  <!-- Texte principal -->
+  <text x="250" y="220" font-family="Georgia,serif" font-size="58" font-weight="bold"
+        fill="#f5f0e8" text-anchor="middle">WILD</text>
+  <text x="250" y="278" font-family="Georgia,serif" font-size="58" font-weight="bold"
+        fill="#8B1A1A" text-anchor="middle">WEST</text>
+  <!-- Sous-texte -->
+  <text x="250" y="330" font-family="Arial,sans-serif" font-size="18"
+        fill="#c8a951" text-anchor="middle" letter-spacing="5">TRADING CO.</text>
+  <!-- Étoiles latérales -->
+  <text x="100" y="260" font-family="Arial" font-size="28" fill="#c8a951" text-anchor="middle">★</text>
+  <text x="400" y="260" font-family="Arial" font-size="28" fill="#c8a951" text-anchor="middle">★</text>
+</svg>

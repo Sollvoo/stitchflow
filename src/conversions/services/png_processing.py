@@ -164,17 +164,22 @@ def preprocess_image(path: Path) -> Path:
         else:
             working = img.convert("RGB")
 
-        # Détecter logo (≤200 couleurs exactes) vs photo
+        # Détecter présence de détails fins (texte, traits minces) vs logo plat vs photo
+        has_fine_details = _detect_fine_details(working)
         is_logo = working.getcolors(maxcolors=200) is not None
-        if is_logo:
-            # Logos : bords déjà nets, contraste léger uniquement
+        if has_fine_details:
+            # Texte fin / détails nets : sharpen agressif, pas de lissage (SMOOTH tuerait les traits)
+            working = ImageEnhance.Contrast(working).enhance(1.4)
+            working = ImageEnhance.Sharpness(working).enhance(2.5)
+        elif is_logo:
+            # Logos : bords déjà nets, contraste léger, lissage anti-artefacts quantization
             working = ImageEnhance.Contrast(working).enhance(1.1)
+            working = working.filter(ImageFilter.SMOOTH)
         else:
-            # Photos / images complexes : contraste + netteté
+            # Photos / images complexes : contraste + netteté + lissage
             working = ImageEnhance.Contrast(working).enhance(1.3)
             working = ImageEnhance.Sharpness(working).enhance(1.5)
-
-        working = working.filter(ImageFilter.SMOOTH)
+            working = working.filter(ImageFilter.SMOOTH)
 
         tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
         working.save(tmp.name, "PNG")
@@ -537,6 +542,7 @@ def vectorize_to_svg(png_path: Path, n_colors: int = 6) -> Path:
                 str(quantized_path),
                 str(svg_path),
                 str(n_colors),
+                "1" if fine_details else "0",
             ],
             capture_output=True,
             timeout=120,

@@ -1,31 +1,62 @@
 <div class="card-body"
-     x-data="{
-       scale: 1, tx: 0, ty: 0, drag: false, sx: 0, sy: 0,
-       selectedForMerge: null,
-       pickerOpen: false,
-       pickerTargetHex: null,
-       pickerFilter: '',
-       wheel(e) {
-         e.preventDefault();
-         const d = e.deltaY > 0 ? 0.85 : 1.15;
-         this.scale = Math.min(Math.max(this.scale * d, 0.2), 8);
-       },
-       down(e) { this.drag = true; this.sx = e.clientX - this.tx; this.sy = e.clientY - this.ty; },
-       move(e) { if (!this.drag) return; this.tx = e.clientX - this.sx; this.ty = e.clientY - this.sy; },
-       up() { this.drag = false; },
-       reset() { this.scale = 1; this.tx = 0; this.ty = 0; },
-       openPicker(hex) { this.pickerTargetHex = hex; this.pickerFilter = ''; this.pickerOpen = true; },
-       closePicker() { this.pickerOpen = false; this.pickerTargetHex = null; }
-     }">
+     x-data="svgEditor({ densities: { {% for c in colors_with_snap %}'{{ c.hex }}': {{ c.density|stringformat:'.4f' }},{% endfor %} } })">
 
-  <!-- Champ caché pour la couleur source de fusion (lu par hx-include) -->
   <input type="hidden" name="source" id="merge-source-field" x-model="selectedForMerge">
 
-  <div class="flex items-center justify-between mb-1">
-    <h3 class="card-title text-info text-base">Vérifiez le SVG vectorisé</h3>
-    <div class="badge badge-info badge-outline badge-sm">attente validation</div>
+  <!-- En-tête + barre Undo/Redo -->
+  <div class="flex items-center justify-between mb-1 gap-2 flex-wrap">
+    <div class="flex items-center gap-2">
+      <h3 class="card-title text-info text-base">Vérifiez le SVG vectorisé</h3>
+      <div class="badge badge-info badge-outline badge-sm">attente validation</div>
+    </div>
+    <div class="flex items-center gap-1">
+      <!-- Undo -->
+      <button
+        hx-post="{% url 'conversions:svg_undo' job.id %}"
+        hx-target="#conversion-status"
+        hx-swap="outerHTML"
+        class="btn btn-ghost btn-xs gap-1 {% if not can_undo %}btn-disabled opacity-30{% endif %}"
+        {% if not can_undo %}disabled{% endif %}
+        title="Annuler la dernière modification">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+        </svg>
+        Annuler
+      </button>
+      <!-- Redo -->
+      <button
+        hx-post="{% url 'conversions:svg_redo' job.id %}"
+        hx-target="#conversion-status"
+        hx-swap="outerHTML"
+        class="btn btn-ghost btn-xs gap-1 {% if not can_redo %}btn-disabled opacity-30{% endif %}"
+        {% if not can_redo %}disabled{% endif %}
+        title="Rétablir la modification annulée">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10H11a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6" />
+        </svg>
+        Rétablir
+      </button>
+      <!-- Réinitialiser (seulement si des modifications existent) -->
+      {% if can_undo %}
+      <button
+        hx-post="{% url 'conversions:svg_reset' job.id %}"
+        hx-target="#conversion-status"
+        hx-swap="outerHTML"
+        class="btn btn-ghost btn-xs gap-1 text-error/60 hover:text-error"
+        title="Annuler toutes les modifications et revenir à l'état initial">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+        Réinitialiser
+      </button>
+      {% endif %}
+    </div>
   </div>
-  <p class="text-sm text-base-content/50 mb-4">Supprimez, fusionnez ou remappez des couleurs avant la conversion PES.</p>
+
+  <p class="text-sm text-base-content/50 mb-4">
+    Configurez les couleurs avant la conversion.
+    <span class="text-base-content/35">Glissez les lignes pour l'ordre de broderie · ⇄ pour fusionner · ✕ pour supprimer</span>
+  </p>
 
   <!-- Aperçu comparatif -->
   <div class="grid grid-cols-2 gap-3">
@@ -39,7 +70,7 @@
     <div>
       <p class="text-xs text-center text-base-content/40 mb-1 uppercase tracking-wide font-medium">SVG vectorisé</p>
       <div class="rounded-lg border border-base-200 w-full h-44 overflow-hidden bg-white relative select-none"
-           @wheel.prevent="wheel($event)"
+           x-ref="svgViewer"
            @mousedown="down($event)"
            @mousemove="move($event)"
            @mouseup="up()"
@@ -66,27 +97,61 @@
   {% if colors_with_snap %}
   <div class="mt-5">
     <p class="text-xs text-base-content/50 mb-2 font-medium uppercase tracking-wide flex items-center gap-2">
-      Couleurs — {{ colors_with_snap|length }}
+      Ordre de broderie — {{ colors_with_snap|length }} fil{{ colors_with_snap|length|pluralize }}
+      <span class="text-base-content/30 font-normal normal-case" x-show="!selectedForMerge" title="Le fil N°1 est brodé en premier. Glissez les lignes pour changer l'ordre.">⬆ 1ᵉʳ brodé</span>
       <span x-show="selectedForMerge" class="text-info normal-case font-normal" style="display:none">
         Cliquez une 2ᵉ couleur pour fusionner →
       </span>
     </p>
 
-    <div class="flex flex-col gap-1">
+    <div class="flex flex-col gap-1 color-list"
+         data-reorder-url="{% url 'conversions:svg_reorder_colors' job.id %}">
       {% for color in colors_with_snap %}
       <div class="flex flex-col gap-0.5 px-2 py-1.5 rounded-lg transition-all"
-           :class="selectedForMerge === '{{ color.hex }}' ? 'bg-info/10 ring-1 ring-info/40' : 'bg-base-200/60'">
+           data-color-hex="{{ color.hex }}"
+           data-index="{{ forloop.counter0 }}"
+           :class="{
+             'bg-info/10 ring-1 ring-info/40': selectedForMerge === '{{ color.hex }}',
+             'bg-base-200/60': selectedForMerge !== '{{ color.hex }}'
+           }">
 
-        <!-- Ligne principale : couleur SVG + actions -->
+        <!-- Ligne principale -->
         <div class="flex items-center gap-2">
-          <span class="w-4 h-4 rounded-sm shrink-0 border border-base-300/50"
-                style="background-color: {{ color.hex }};"></span>
+          <!-- Numéro d'ordre + poignée de drag -->
+          <span class="drag-handle text-base-content/30 shrink-0 cursor-grab active:cursor-grabbing select-none flex items-center gap-0.5" title="Glisser pour changer l'ordre de broderie">
+            <span class="text-base-content/20">⠿</span>
+            <span class="text-xs font-mono w-4 text-center text-base-content/40">{{ forloop.counter }}</span>
+          </span>
 
-          <span class="text-xs font-mono text-base-content/70 flex-1 truncate">{{ color.hex }}</span>
+          <!-- Swatch couleur cliquable → color picker libre -->
+          <label class="cursor-pointer relative shrink-0" title="Cliquer pour changer la couleur librement">
+            <span class="w-4 h-4 rounded-sm border border-base-300/50 block"
+                  style="background-color: {{ color.hex }};"></span>
+            <input type="color"
+                   value="{{ color.hex }}"
+                   class="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                   @change.prevent="changeColorFree($event.target.value, '{{ color.hex }}', '{% url 'conversions:svg_change_color' job.id %}')">
+          </label>
+
+          <span class="text-xs font-mono text-base-content/70 truncate" style="min-width:4.5rem">{{ color.hex }}</span>
 
           <span class="text-xs text-base-content/35 shrink-0">{{ color.count }}</span>
 
-          <!-- Bouton color picker Brother -->
+          <!-- Type de point -->
+          <select
+              name="stitch_type"
+              hx-post="{% url 'conversions:svg_set_stitch_type' job.id %}"
+              hx-trigger="change"
+              hx-target="#conversion-status"
+              hx-swap="outerHTML"
+              hx-vals='{"color": "{{ color.hex }}"}'
+              class="select select-bordered select-xs shrink-0 max-w-[7rem]"
+              title="Type de point pour cette couleur">
+            <option value="auto_fill" {% if color.stitch_type == 'auto_fill' %}selected{% endif %}>Remplissage</option>
+            <option value="running_stitch" {% if color.stitch_type == 'running_stitch' %}selected{% endif %}>Contour</option>
+          </select>
+
+          <!-- Color picker -->
           {% if brother_palette %}
           <button
             @click.prevent="openPicker('{{ color.hex }}')"
@@ -97,7 +162,7 @@
           </button>
           {% endif %}
 
-          <!-- Bouton sélection pour fusion -->
+          <!-- Sélection pour fusion -->
           <button
             x-show="!selectedForMerge || selectedForMerge === '{{ color.hex }}'"
             @click.prevent="selectedForMerge = (selectedForMerge === '{{ color.hex }}') ? null : '{{ color.hex }}'"
@@ -107,7 +172,7 @@
             <span x-text="selectedForMerge === '{{ color.hex }}' ? '✕' : '⇄'">⇄</span>
           </button>
 
-          <!-- Bouton fusionner ici (visible quand une autre couleur est déjà sélectionnée) -->
+          <!-- Fusionner ici -->
           <button
             x-show="selectedForMerge && selectedForMerge !== '{{ color.hex }}'"
             style="display:none"
@@ -121,7 +186,7 @@
             → Fusionner
           </button>
 
-          <!-- Bouton supprimer couleur -->
+          <!-- Supprimer -->
           <button
             hx-post="{% url 'conversions:svg_remove_color' job.id %}"
             hx-vals='{"color": "{{ color.hex }}"}'
@@ -133,18 +198,40 @@
           </button>
         </div>
 
-        <!-- Ligne secondaire : aperçu fil Brother estimé -->
-        {% if color.brother_name %}
-        <div class="flex items-center gap-1.5 pl-6">
-          <span class="text-base-content/30 text-xs">→</span>
-          <span class="w-3 h-3 rounded-sm border border-base-300/50 shrink-0"
-                style="background-color: {{ color.brother_hex }};"></span>
-          <span class="text-xs text-base-content/40 truncate">{{ color.brother_name }}</span>
-          {% if color.collision %}
-          <span class="badge badge-warning badge-xs shrink-0" title="Deux couleurs SVG mapperont vers ce même fil">⚠ fusionné</span>
+        <!-- Ligne densité + fil Brother -->
+        <div class="flex items-center gap-2 pl-6 pr-1">
+          <!-- Fil Brother estimé -->
+          {% if color.brother_name %}
+          <div class="flex items-center gap-1 flex-1 min-w-0">
+            <span class="text-base-content/30 text-xs">→</span>
+            <span class="w-3 h-3 rounded-sm border border-base-300/50 shrink-0"
+                  style="background-color: {{ color.brother_hex }};"></span>
+            <span class="text-xs text-base-content/40 truncate">{{ color.brother_name }}</span>
+            {% if color.collision %}
+            <span class="badge badge-warning badge-xs shrink-0">⚠ fusionné</span>
+            {% endif %}
+          </div>
+          {% else %}
+          <div class="flex-1"></div>
           {% endif %}
+
+          <!-- Densité slider -->
+          <div class="flex items-center gap-1.5 shrink-0" title="Densité de point (mm entre rangées)">
+            <span class="text-xs text-base-content/30">densité</span>
+            <input type="range"
+                   x-model.number="densities['{{ color.hex }}']"
+                   name="density"
+                   min="0.2" max="1.0" step="0.05"
+                   hx-post="{% url 'conversions:svg_set_density' job.id %}"
+                   hx-trigger="change"
+                   hx-target="#conversion-status"
+                   hx-swap="outerHTML"
+                   hx-vals='{"color": "{{ color.hex }}"}'
+                   class="range range-xs w-20">
+            <span class="text-xs font-mono w-9 text-right"
+                  x-text="densities['{{ color.hex }}'].toFixed(2)+'mm'">{{ color.density|floatformat:2 }}mm</span>
+          </div>
         </div>
-        {% endif %}
       </div>
       {% endfor %}
     </div>
@@ -184,10 +271,8 @@
        class="fixed inset-0 z-50 flex items-center justify-center p-4"
        @keydown.escape.window="closePicker()">
 
-    <!-- Overlay -->
     <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="closePicker()"></div>
 
-    <!-- Modal -->
     <div class="relative bg-base-100 rounded-2xl shadow-xl w-full max-w-md max-h-[80vh] flex flex-col z-10"
          @click.stop>
       <div class="p-4 border-b border-base-200 flex items-center justify-between">
@@ -198,7 +283,6 @@
         <button @click="closePicker()" class="btn btn-ghost btn-sm btn-circle">✕</button>
       </div>
 
-      <!-- Filtre par nom -->
       <div class="p-3 border-b border-base-200">
         <input type="text"
                x-model="pickerFilter"
@@ -207,18 +291,12 @@
                @click.stop>
       </div>
 
-      <!-- Grille de fils -->
       <div class="overflow-y-auto p-3 flex-1">
         <div class="grid grid-cols-2 gap-1">
           {% for thread in brother_palette %}
           <button
             x-show="!pickerFilter || '{{ thread.name|lower }}'.includes(pickerFilter.toLowerCase())"
-            hx-post="{% url 'conversions:svg_change_color' job.id %}"
-            hx-vals='{"old_color": ""}'
-            hx-target="#conversion-status"
-            hx-swap="outerHTML"
-            :hx-vals='JSON.stringify({old_color: pickerTargetHex, new_color: "{{ thread.hex }}"})'
-            @click="closePicker()"
+            @click.prevent="changeColor('{{ thread.hex }}', '{% url 'conversions:svg_change_color' job.id %}')"
             class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-base-200 transition-colors text-left">
             <span class="w-5 h-5 rounded shrink-0 border border-base-300/50"
                   style="background-color: {{ thread.hex }};"></span>
