@@ -7,13 +7,40 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_MACHINE = {
+    'model': 'PR1050X',
+    'needles': 10,
+    'max_threads': 10,
+    'hoop_width_mm': 360,
+    'hoop_height_mm': 200,
+    'format': 'PES',
+}
+
+
+def _resolve_machine_params(job) -> dict:
+    """Paramètres machine du propriétaire du job — défaut PR1050X (jobs anonymes)."""
+    if not job.user_id:
+        return dict(_DEFAULT_MACHINE)
+    try:
+        from users.models import UserProfile
+        profile, _ = UserProfile.objects.get_or_create(user_id=job.user_id)
+        return profile.machine_params()
+    except Exception as exc:
+        logger.warning("Profil machine illisible pour job %s : %s", job.id, exc)
+        return dict(_DEFAULT_MACHINE)
+
 
 def _run_svg_to_pes_pipeline(job, source_svg_path: Path) -> None:
     """
     Pipeline commun SVG→PES : validation, post-traitement, Ink/Stitch, preview, métadonnées.
     Met à jour job.status = COMPLETED en fin. Propage les exceptions vers l'appelant.
     """
-    from .services.inkstitch import convert_svg_to_pes, InkstitchError, humanize_inkstitch_error
+    from .services.inkstitch import (
+        convert_svg_to_pes,
+        convert_pes_to_format,
+        InkstitchError,
+        humanize_inkstitch_error,
+    )
     from .services.previews import generate_pes_preview, extract_pes_metadata
     from .services.svg_utils import (
         scale_svg_to_width_mm,
@@ -33,6 +60,10 @@ def _run_svg_to_pes_pipeline(job, source_svg_path: Path) -> None:
 
     output_dir = Path(settings.MEDIA_ROOT) / 'conversions' / 'outputs'
     preview_dir = Path(settings.MEDIA_ROOT) / 'conversions' / 'previews'
+
+    machine = _resolve_machine_params(job)
+    if machine['model'] != 'PR1050X':
+        logger.info('[machine] job %s : %s', job.id, machine)
 
     scaled_svg_path: Path | None = None
 
@@ -70,9 +101,12 @@ def _run_svg_to_pes_pipeline(job, source_svg_path: Path) -> None:
             svg_to_convert = scaled_svg_path
             logger.info("SVG redimensionné à %dmm pour job %s", job.target_width_mm, job.id)
 
-        n_merged = force_max_svg_colors(svg_to_convert, max_colors=10)
+        n_merged = force_max_svg_colors(svg_to_convert, max_colors=machine['max_threads'])
         if n_merged > 0:
-            logger.info('[colors] %d couleur(s) fusionnées → ≤10 fils pour job %s', n_merged, job.id)
+            logger.info(
+                '[colors] %d couleur(s) fusionnées → ≤%d fils pour job %s',
+                n_merged, machine['max_threads'], job.id,
+            )
 
         n_before_snap = _count_svg_unique_fills(svg_to_convert)
         try:
@@ -105,8 +139,21 @@ def _run_svg_to_pes_pipeline(job, source_svg_path: Path) -> None:
 
         pes_path = convert_svg_to_pes(svg_to_convert, output_dir)
 
-        relative_pes_path = pes_path.relative_to(settings.MEDIA_ROOT)
-        job.output_file.name = str(relative_pes_path)
+        # Export multi-format selon le profil machine — le PES reste la source
+        # de vérité pour la preview et les métadonnées (DST ne stocke pas les couleurs)
+        output_path = pes_path
+        if machine['format'] != 'PES':
+            try:
+                output_path = convert_pes_to_format(pes_path, machine['format'])
+                logger.info('[export] %s généré pour job %s', machine['format'], job.id)
+            except Exception as export_exc:
+                logger.warning(
+                    'Export %s échoué pour job %s (PES conservé) : %s',
+                    machine['format'], job.id, export_exc,
+                )
+                output_path = pes_path
+
+        job.output_file.name = str(output_path.relative_to(settings.MEDIA_ROOT))
         job.status = job.__class__.Status.COMPLETED
 
         try:
@@ -121,6 +168,7 @@ def _run_svg_to_pes_pipeline(job, source_svg_path: Path) -> None:
                 pes_path,
                 source_svg_path=svg_to_convert,
                 n_colors_requested=job.n_colors if job.source_format != 'svg' else None,
+                machine=machine,
             )
         except Exception as meta_exc:
             logger.warning("Metadata échouée pour job %s : %s", job.id, meta_exc)

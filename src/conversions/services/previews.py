@@ -238,20 +238,34 @@ def _compute_quality_score(
     pattern: pyembroidery.EmbPattern,
     source_svg_path: Path | None = None,
     n_colors_requested: int | None = None,
+    machine: dict | None = None,
 ) -> dict:
     """
-    Score qualité 0-100 pour Brother PR1050X.
+    Score qualité 0-100 pour la machine cible (défaut : Brother PR1050X).
     7 critères pondérés + gate critique sur les critères essentiels.
 
+    machine : dict {'max_threads', 'hoop_width_mm', 'hoop_height_mm', ...}
+    (UserProfile.machine_params()) — None = PR1050X (10 fils, 360×200mm).
+
     Pondération :
-      fils        18%   contrainte machine 10 aiguilles
+      fils        18%   contrainte machine
       points      18%   densité design
-      dimensions  14%   zone broderie 360×200mm
+      dimensions  14%   zone de broderie
       sauts       10%   qualité du séquençage
       densité     10%   points/mm²
       fidélité    18%   couleurs SVG→PES (Lab)
       couverture  12%   nb couleurs obtenues vs demandées
     """
+    machine = machine or {}
+    max_threads = machine.get('max_threads', 10)
+    ideal_threads = min(7, max_threads)
+    hard_limit_threads = max_threads + 5
+    hoop_w = machine.get('hoop_width_mm', 360)
+    hoop_h = machine.get('hoop_height_mm', 200)
+    # Bande "légèrement hors zone" : mêmes marges que la calibration PR1050X (400×230)
+    tol_w = hoop_w + 40
+    tol_h = hoop_h + 30
+
     raw_threadlist = pattern.threadlist or []
     threadlist, _ = _filter_pes_v1_color_breaks(raw_threadlist)
     thread_count = len(threadlist)
@@ -266,22 +280,21 @@ def _compute_quality_score(
         width_mm = 0.0
         height_mm = 0.0
 
-    # 1. Fils (18%) — PR1050X : max 10 aiguilles, idéal ≤7
+    # 1. Fils (18%) — contrainte machine (défaut PR1050X : max 10, idéal ≤7)
     if thread_count == 0:
         t_score = 0
         t_msg = "Aucun fil — design vide"
-    elif thread_count <= 7:
+    elif thread_count <= ideal_threads:
         t_score = 100
-        t_msg = f"{thread_count} fil(s) — idéal PR1050X (≤7)"
-    elif thread_count <= 10:
-        # PR1050X = 10 aiguilles : 8-10 fils s'enfilent directement, pas de re-enfilage requis
+        t_msg = f"{thread_count} fil(s) — idéal pour votre machine (≤{ideal_threads})"
+    elif thread_count <= max_threads:
         t_score = 80
-        t_msg = f"{thread_count} fils — dans les limites PR1050X (10 aiguilles)"
-    elif thread_count <= 15:
+        t_msg = f"{thread_count} fils — dans les limites machine ({max_threads} fils)"
+    elif thread_count <= hard_limit_threads:
         # Resserré : 25 au lieu de 35 — re-enfilage = coût opérationnel réel
         t_score = 25
         t_msg = (
-            f"{thread_count} fils — dépasse les 10 aiguilles, re-enfilage nécessaire"
+            f"{thread_count} fils — dépasse les {max_threads} fils, re-enfilage nécessaire"
         )
     else:
         t_score = 0
@@ -310,24 +323,24 @@ def _compute_quality_score(
         s_score = 0
         s_msg = f"{stitch_count:,} points — dépasse la limite recommandée (500 000)"
 
-    # 3. Dimensions (14%) — PR1050X : zone max 360×200mm
+    # 3. Dimensions (14%) — zone de broderie machine (défaut PR1050X : 360×200mm)
     if width_mm > 0 and height_mm > 0:
-        if width_mm <= 360 and height_mm <= 200:
+        if width_mm <= hoop_w and height_mm <= hoop_h:
             if width_mm >= 20 and height_mm >= 5:
                 d_score = 100
-                d_msg = f"{width_mm:.0f}×{height_mm:.0f} mm — dans la zone PR1050X"
+                d_msg = f"{width_mm:.0f}×{height_mm:.0f} mm — dans la zone de broderie"
             else:
                 d_score = 35
                 d_msg = (
                     f"{width_mm:.0f}×{height_mm:.0f} mm — très petit, "
                     "détails risquent d'être illisibles"
                 )
-        elif width_mm <= 400 and height_mm <= 230:
+        elif width_mm <= tol_w and height_mm <= tol_h:
             d_score = 55
-            d_msg = f"{width_mm:.0f}×{height_mm:.0f} mm — légèrement hors zone (max 360×200 mm)"
+            d_msg = f"{width_mm:.0f}×{height_mm:.0f} mm — légèrement hors zone (max {hoop_w}×{hoop_h} mm)"
         else:
             d_score = 0
-            d_msg = f"{width_mm:.0f}×{height_mm:.0f} mm — hors zone de broderie (max 360×200 mm)"
+            d_msg = f"{width_mm:.0f}×{height_mm:.0f} mm — hors zone de broderie (max {hoop_w}×{hoop_h} mm)"
     else:
         d_score = 50
         d_msg = "Dimensions non disponibles"
@@ -424,7 +437,11 @@ def _compute_quality_score(
             "message": t_msg,
             "weight": 18,
             "raw_value": thread_count,
-            "thresholds": {"ideal": 7, "max_machine": 10, "hard_limit": 15},
+            "thresholds": {
+                "ideal": ideal_threads,
+                "max_machine": max_threads,
+                "hard_limit": hard_limit_threads,
+            },
         },
         "stitches": {
             "score": s_score,
@@ -445,7 +462,7 @@ def _compute_quality_score(
                 "width_mm": round(width_mm, 1),
                 "height_mm": round(height_mm, 1),
             },
-            "thresholds": {"max_w": 360, "max_h": 200},
+            "thresholds": {"max_w": hoop_w, "max_h": hoop_h},
         },
         "jumps": {
             "score": j_score,
@@ -650,6 +667,7 @@ def extract_pes_metadata(
     pes_path: Path,
     source_svg_path: Path | None = None,
     n_colors_requested: int | None = None,
+    machine: dict | None = None,
 ) -> dict:
     """
     Extrait les métadonnées de broderie depuis un fichier PES.
@@ -697,7 +715,9 @@ def extract_pes_metadata(
             round(stitch_count / _STITCHES_PER_MINUTE, 1) if stitch_count else None
         )
 
-        quality = _compute_quality_score(pattern, source_svg_path, n_colors_requested)
+        quality = _compute_quality_score(
+            pattern, source_svg_path, n_colors_requested, machine=machine
+        )
 
         return {
             "color_changes": color_changes,
