@@ -46,6 +46,22 @@
       </div>
     </div>
 
+    <!-- Machine -->
+    <div class="card bg-base-100 shadow-lg">
+      <div class="card-body gap-3">
+        <h2 class="font-semibold text-base">Ma machine</h2>
+        <a href="{% url 'users:profile_machine' %}" class="flex items-center justify-between p-3 rounded-lg hover:bg-base-200 transition-colors group">
+          <div>
+            <p class="text-sm font-medium">{{ user.profile.get_machine_model_display|default:"Brother PR1050X" }}</p>
+            <p class="text-xs text-base-content/50">{{ user.profile.machine_hoop_width_mm }}×{{ user.profile.machine_hoop_height_mm }}mm · {{ user.profile.machine_format }}</p>
+          </div>
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-base-content/30 group-hover:text-base-content/60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          </svg>
+        </a>
+      </div>
+    </div>
+
     <!-- Sécurité -->
     <div class="card bg-base-100 shadow-lg">
       <div class="card-body gap-3">

@@ -10,6 +10,7 @@ urlpatterns = [
     path('logout/', views.LogoutView.as_view(), name='logout'),
     path('register/', views.SignUpView.as_view(), name='register'),
     path('profile/', views.ProfileView.as_view(), name='profile'),
+    path('profile/machine/', views.MachineProfileView.as_view(), name='profile_machine'),
     path('change-email/', views.ChangeEmailView.as_view(), name='change_email'),
 
     # Mot de passe oublié (envoi email)

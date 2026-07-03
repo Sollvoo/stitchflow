@@ -6,7 +6,10 @@ from django.shortcuts import redirect, render
 from django.utils.decorators import method_decorator
 from django.views import View
 
-from .forms import ChangeEmailForm, EmailLoginForm, ProfileForm, SignUpForm
+import json
+
+from .forms import ChangeEmailForm, EmailLoginForm, MachineProfileForm, ProfileForm, SignUpForm
+from .models import MACHINE_PRESETS, UserProfile
 
 
 class LoginView(View):
@@ -68,6 +71,33 @@ class ProfileView(View):
             messages.success(request, 'Profil mis à jour.')
             return redirect('users:profile')
         return render(request, self.template_name, {'form': form})
+
+
+@method_decorator(login_required, name='dispatch')
+class MachineProfileView(View):
+    template_name = 'users/profile_machine.html'
+
+    def _get_profile(self, request: HttpRequest) -> UserProfile:
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        return profile
+
+    def _context(self, form: MachineProfileForm) -> dict:
+        return {
+            'form': form,
+            'machine_presets_json': json.dumps(MACHINE_PRESETS),
+        }
+
+    def get(self, request: HttpRequest) -> HttpResponse:
+        form = MachineProfileForm(instance=self._get_profile(request))
+        return render(request, self.template_name, self._context(form))
+
+    def post(self, request: HttpRequest) -> HttpResponse:
+        form = MachineProfileForm(request.POST, instance=self._get_profile(request))
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Machine mise à jour.')
+            return redirect('users:profile_machine')
+        return render(request, self.template_name, self._context(form))
 
 
 @method_decorator(login_required, name='dispatch')

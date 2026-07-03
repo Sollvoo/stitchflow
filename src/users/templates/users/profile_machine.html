@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="min-h-[70vh] flex items-center justify-center px-4 py-12">
+  <div class="w-full max-w-md flex flex-col gap-4">
+
+    <div class="card bg-base-100 shadow-lg">
+      <div class="card-body gap-5"
+           x-data='machineProfile({{ machine_presets_json }}, "{{ form.machine_model.value|default:"PR1050X" }}")'>
+
+        <div class="text-center">
+          <div class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-2xl mx-auto mb-2">
+            🧵
+          </div>
+          <h1 class="text-xl font-bold">Ma machine</h1>
+          <p class="text-sm text-base-content/50 mt-0.5">
+            Les conversions s'adaptent aux capacités de votre machine
+          </p>
+        </div>
+
+        {% if messages %}
+        {% for message in messages %}
+        <div class="alert {% if message.tags == 'success' %}alert-success{% else %}alert-info{% endif %} text-sm py-2">
+          {{ message }}
+        </div>
+        {% endfor %}
+        {% endif %}
+
+        {% if form.non_field_errors %}
+        <div class="alert alert-error text-sm py-2">{{ form.non_field_errors }}</div>
+        {% endif %}
+
+        <form method="post" class="flex flex-col gap-4">
+          {% csrf_token %}
+
+          <label class="form-control">
+            <div class="label pb-1"><span class="label-text text-sm font-medium">Modèle</span></div>
+            <select name="machine_model" x-model="model" @change="applyPreset()" class="select select-bordered w-full">
+              {% for value, label in form.fields.machine_model.choices %}
+              <option value="{{ value }}" {% if form.machine_model.value == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+
+          <div class="grid grid-cols-2 gap-3">
+            <label class="form-control">
+              <div class="label pb-1"><span class="label-text text-sm font-medium">Aiguilles</span></div>
+              <input type="number" name="machine_needles" min="1" max="20"
+                     x-model="needles" :readonly="!isCustom"
+                     :class="{ 'bg-base-200 text-base-content/50': !isCustom }"
+                     class="input input-bordered w-full">
+            </label>
+            <label class="form-control">
+              <div class="label pb-1"><span class="label-text text-sm font-medium">Format</span></div>
+              <select name="machine_format" x-model="format"
+                      :class="{ 'bg-base-200 text-base-content/50 pointer-events-none': !isCustom }"
+                      :tabindex="isCustom ? 0 : -1"
+                      class="select select-bordered w-full">
+                {% for value, label in form.fields.machine_format.choices %}
+                <option value="{{ value }}" {% if form.machine_format.value == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <label class="form-control">
+              <div class="label pb-1"><span class="label-text text-sm font-medium">Zone largeur (mm)</span></div>
+              <input type="number" name="machine_hoop_width_mm" min="50" max="600"
+                     x-model="hoopWidth" :readonly="!isCustom"
+                     :class="{ 'bg-base-200 text-base-content/50': !isCustom }"
+                     class="input input-bordered w-full">
+            </label>
+            <label class="form-control">
+              <div class="label pb-1"><span class="label-text text-sm font-medium">Zone hauteur (mm)</span></div>
+              <input type="number" name="machine_hoop_height_mm" min="50" max="600"
+                     x-model="hoopHeight" :readonly="!isCustom"
+                     :class="{ 'bg-base-200 text-base-content/50': !isCustom }"
+                     class="input input-bordered w-full">
+            </label>
+          </div>
+
+          <p class="text-xs text-base-content/40" x-show="!isCustom">
+            Caractéristiques remplies automatiquement pour ce modèle.
+          </p>
+
+          <button type="submit" class="btn btn-primary w-full">Sauvegarder</button>
+        </form>
+
+      </div>
+    </div>
+
+    <a href="{% url 'users:profile' %}" class="btn btn-ghost btn-sm gap-2">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+      </svg>
+      Retour au profil
+    </a>
+
+  </div>
+</div>
+
+<script>
+  function machineProfile(presets, initialModel) {
+    return {
+      presets: presets,
+      model: initialModel,
+      needles: {{ form.machine_needles.value|default:10 }},
+      hoopWidth: {{ form.machine_hoop_width_mm.value|default:360 }},
+      hoopHeight: {{ form.machine_hoop_height_mm.value|default:200 }},
+      format: '{{ form.machine_format.value|default:"PES" }}',
+      get isCustom() { return this.model === 'CUSTOM'; },
+      applyPreset() {
+        const p = this.presets[this.model];
+        if (!p) return;
+        this.needles = p.needles;
+        this.hoopWidth = p.hoop_width_mm;
+        this.hoopHeight = p.hoop_height_mm;
+        this.format = p.format;
+      },
+    };
+  }
+</script>
+{% endblock %}

@@ -4,6 +4,8 @@ from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 
+from .models import MACHINE_PRESETS, UserProfile
+
 
 class EmailLoginForm(forms.Form):
     email = forms.EmailField(
@@ -112,6 +114,31 @@ class ProfileForm(forms.ModelForm):
             'first_name': forms.TextInput(attrs={'placeholder': 'Marie'}),
             'last_name': forms.TextInput(attrs={'placeholder': 'Dupont'}),
         }
+
+
+class MachineProfileForm(forms.ModelForm):
+    class Meta:
+        model = UserProfile
+        fields = [
+            'machine_model',
+            'machine_needles',
+            'machine_hoop_width_mm',
+            'machine_hoop_height_mm',
+            'machine_format',
+        ]
+
+    def clean(self):
+        cleaned = super().clean()
+        model = cleaned.get('machine_model')
+        preset = MACHINE_PRESETS.get(model)
+        if preset:
+            # Modèle connu : les caractéristiques viennent du preset,
+            # pas des champs (protège contre une manipulation du POST)
+            cleaned['machine_needles'] = preset['needles']
+            cleaned['machine_hoop_width_mm'] = preset['hoop_width_mm']
+            cleaned['machine_hoop_height_mm'] = preset['hoop_height_mm']
+            cleaned['machine_format'] = preset['format']
+        return cleaned
 
 
 class ChangeEmailForm(forms.Form):
