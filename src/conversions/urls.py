@@ -17,6 +17,7 @@ urlpatterns = [
     path('<uuid:pk>/status/', views.JobStatusView.as_view(), name='status'),
     path('<uuid:pk>/api/status/', views.JobApiStatusView.as_view(), name='api_status'),
     path('<uuid:pk>/download/', views.JobDownloadView.as_view(), name='download'),
+    path('<uuid:pk>/svg/download/', views.SvgDownloadView.as_view(), name='svg_download'),
     path('<uuid:pk>/reconvert/', views.ReconvertView.as_view(), name='reconvert'),
     path('<uuid:pk>/svg/remove-color/', views.SvgRemoveColorView.as_view(), name='svg_remove_color'),
     path('<uuid:pk>/svg/merge-colors/', views.SvgMergeColorsView.as_view(), name='svg_merge_colors'),

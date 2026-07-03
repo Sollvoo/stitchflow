@@ -36,6 +36,15 @@
         </svg>
         Rétablir
       </button>
+      <!-- Télécharger le SVG vectorisé -->
+      <a href="{% url 'conversions:svg_download' job.id %}"
+         class="btn btn-ghost btn-xs gap-1"
+         title="Télécharger le SVG vectorisé pour l'inspecter ou le modifier hors application">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+        </svg>
+        SVG
+      </a>
       <!-- Réinitialiser (seulement si des modifications existent) -->
       {% if can_undo %}
       <button

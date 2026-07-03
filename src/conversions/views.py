@@ -714,6 +714,31 @@ class JobDownloadView(View):
         return response
 
 
+class SvgDownloadView(View):
+    """Sert le SVG vectorisé (ou le SVG source pour un upload SVG direct)."""
+
+    def get(self, request, pk):
+        job = get_object_or_404(ConversionJob, pk=pk)
+
+        file_field = None
+        if job.vectorized_svg_file:
+            file_field = job.vectorized_svg_file
+        elif job.source_format == 'svg' and job.original_file:
+            file_field = job.original_file
+
+        if file_field is None:
+            raise Http404('SVG non disponible.')
+
+        stem = job.original_filename.strip() or f"stitch_{str(job.id)[:8]}"
+        response = FileResponse(
+            file_field.open('rb'),
+            as_attachment=True,
+            content_type='image/svg+xml',
+        )
+        response['Content-Disposition'] = f'attachment; filename="{stem}.svg"'
+        return response
+
+
 def _build_svg_editor_context(job: ConversionJob) -> dict:
     from .services.svg_utils import get_svg_colors_with_count, get_stitch_types, get_stitch_densities
     from .services.thread_color import get_snap_preview, get_brother_palette
