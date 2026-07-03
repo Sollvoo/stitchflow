@@ -728,8 +728,10 @@ class JobDownloadView(View):
             raise Http404('Fichier non disponible.')
 
         # Utiliser le nom original du SVG, fallback sur l'ID court
+        # Extension dérivée du fichier réel (PES par défaut, DST/JEF/VP3 selon profil machine)
         stem = job.original_filename.strip() or f"stitch_{str(job.id)[:8]}"
-        filename = f"{stem}.pes"
+        ext = Path(job.output_file.name).suffix or '.pes'
+        filename = f"{stem}{ext}"
 
         response = FileResponse(job.output_file.open('rb'), as_attachment=True)
         response['Content-Disposition'] = f'attachment; filename="{filename}"'

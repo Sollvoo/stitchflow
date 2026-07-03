@@ -136,6 +136,49 @@ def convert_svg_to_pes(input_svg_path: Path, output_dir: Path) -> Path:
     return pes_path
 
 
+_SUPPORTED_EXPORT_FORMATS = frozenset(["DST", "JEF", "VP3"])
+
+
+def convert_pes_to_format(pes_path: Path, target_format: str) -> Path:
+    """
+    Convertit un PES vers un autre format machine via pyembroidery.
+
+    Le PES reste la source de vérité (preview + métadonnées) ; le fichier
+    cible est écrit à côté avec l'extension du format.
+
+    Args:
+        pes_path: Chemin du fichier PES source.
+        target_format: 'DST', 'JEF' ou 'VP3'.
+
+    Returns:
+        Chemin du fichier converti.
+
+    Raises:
+        InkstitchError: Format non supporté ou conversion échouée.
+    """
+    import pyembroidery
+
+    fmt = target_format.strip().upper()
+    if fmt not in _SUPPORTED_EXPORT_FORMATS:
+        raise InkstitchError(f"Format d'export non supporté : {target_format}")
+
+    output_path = pes_path.with_suffix(f".{fmt.lower()}")
+    try:
+        pattern = pyembroidery.read(str(pes_path))
+        if pattern is None:
+            raise InkstitchError(f"Lecture du PES impossible : {pes_path.name}")
+        pyembroidery.write(pattern, str(output_path))
+    except InkstitchError:
+        raise
+    except Exception as exc:
+        raise InkstitchError(f"Export {fmt} échoué : {exc}") from exc
+
+    if not output_path.exists():
+        raise InkstitchError(f"Export {fmt} : fichier non produit")
+
+    return output_path
+
+
 def _extract_pes_from_zip(zip_path: Path, output_dir: Path, source_svg: Path) -> Path:
     """Extrait le premier fichier .pes trouvé dans le ZIP."""
     with zipfile.ZipFile(zip_path, "r") as zf:
