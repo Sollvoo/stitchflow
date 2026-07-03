@@ -466,10 +466,11 @@ def remove_background_fill(svg_path: Path) -> int:
                 pass
         elif el.tag in (ns_path, "path"):
             d = el.get("d", "")
-            # Ne supprimer que les paths simples (≤ 12 commandes SVG) — rectangles approximatifs.
-            # Les formes complexes (hexagones, étoiles, silhouettes) sont des éléments de design.
+            # Formes simples uniquement — les formes complexes (étoiles, silhouettes)
+            # sont des éléments de design. ≤12 segments = rectangle approximatif ;
+            # 13-20 segments = rectangle à coins arrondis issu de vectorisation.
             segment_count = len(re.findall(r"[MmLlHhVvCcSsQqTtAaZz]", d))
-            if segment_count > 12:
+            if segment_count > 20:
                 return
             nums = [float(m) for m in _COORD_RE.findall(d)]
             if len(nums) < 4:
@@ -480,7 +481,7 @@ def remove_background_fill(svg_path: Path) -> int:
             bbox_w = max(xs) - min(xs)
             bbox_h = max(ys) - min(ys)
             coverage = (bbox_w * bbox_h) / viewbox_area
-            if coverage > 0.85:
+            if coverage > 0.80:
                 to_remove.append((el, parent))
 
     for child in list(root):
