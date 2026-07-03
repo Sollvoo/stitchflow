@@ -2,8 +2,8 @@
 
 ## [LIRE EN PREMIER — CONTEXTE RAPIDE POUR L'IA]
 
-**Score actuel (S7) :** 95.7/100 sur 20 tests (2026-06-20) — S8 = session infra/bugs, benchmark à relancer
-**Score S6 (18 tests) :** 95.1/100
+**Score actuel (S7) :** 95.7/100 sur 20 tests (2026-06-20)
+**Score S8 :** session infrastructure/bugs — benchmark à relancer pour mesurer l'impact des fixes S8
 **Objectif :** 95.0/100 sur les tests de référence (**ATTEINT Session 6, maintenu S7**)
 
 **Tests anti-régression :**
@@ -26,20 +26,31 @@ Notes critiques :
 - **T14 = threads=80 limite machine** (8 fils source PDF → impossible sans modifier le PDF)
 - **T01 = color_fidelity floor 70 définitif** : palette Brother a un vide gris (Pewter L≈34 → Warm Gray L≈82), aucun fil intermédiaire. ΔLab=28.4 est physiquement irréductible.
 
-**Ce qui a été tenté et n'a PAS fonctionné (ne pas retenter) :**
-- S2 Iter 3 : `filter_speckle=2` / `color_precision=7` pour T02 coverage → neutre, 5ème couleur fondamentalement ambiguë dans le PNG source (2 couleurs trop proches en Lab)
-- Coefficient color_fidelity 1.5 → ne pas tenter, durcirait les scores sans améliorer la qualité réelle (distance Lab résiduelle = limite palette Brother, pas défaut convertisseur)
-- Algorithme TSP pour jumps T05 → effort élevé, impact limité (ceiling naturel photo)
-- S5 Iter 2 : `corner_threshold` adaptatif VTracer (n≤3→80, n>8→50) → neutre sur les scores de benchmark, conservé pour la logique (pas de régression, mais pas de gain mesurable sur T01/T03)
-- S7 : Fix thread_color.py pour T01 ΔLab=28.4 → IMPOSSIBLE, le parsing GPL est correct. Lacune palette Brother entre L=34 (Pewter) et L=82 (Warm Gray) = aucun fil gris moyen dans la palette.
+**Codes de diagnostic pipeline (nouveau depuis S9) :**
+- `VECT` — problème vectorisation PNG→SVG (couleurs perdues, artefacts)
+- `SVG_PREP` — problème préparation SVG pour Ink/Stitch (tatami fond, namespace, paths non fermés)
+- `INK_STITCH` — problème conversion Ink/Stitch (PES vide, timeout)
+- `SCORING` — problème calibration score (score ne reflète pas qualité réelle)
 
-**Prochaines priorités (pour Session 9 — audit calibration obligatoire S9) :**
-1. **T03=94** (écusson 12 col, threads=80 9 fils) : tenter réduction à 8 fils via `force_max_svg_colors(8)` dès que n_colors≥10 → t_score 80→100 potentiel, mais risque perte couleurs distinctives.
-2. **T11=94** (PDF vectoriel, color_fidelity=92 ΔLab=7.1, coverage=66 4/6) : investiguer pourquoi seules 4/6 couleurs arrivent dans le SVG final depuis un PDF vectoriel.
-3. **T14=90** (PDF vectoriel complexe 120mm, threads=80 8 fils, color_fidelity=80 7/8 fils) : un fil disparaît probablement via snap→group_colors. Diagnostiquer avec logs détaillés.
+**Baseline Windows (S9)** : la machine de dev Windows n'a ni palette Brother (`snap désactivé`), ni rembg, ni poppler (T12 impossible). Les scores y sont systématiquement plus bas que la référence macOS S7 : T08=94 (vs 100), moyenne 92.7 (vs 95.7). **Comparer les runs Windows entre eux, pas à la référence macOS.**
+
+**Ce qui a été tenté et n'a PAS fonctionné (ne pas retenter) :**
+- **S9 : `inkstitch:fill_method="auto_fill"` sur les paths fill → INTERDIT.** Mesuré A/B contrôlé : 5 annotations font passer Ink/Stitch de 5.7s à timeout 300s (T02). L'annotation systématique `_annotate_fill_paths_for_inkstitch` (commit « forcer tatami fill ») a été supprimée et remplacée par `_strip_fill_method_annotations` qui purge les annotations héritées des SVG stockés. Les zones ignorées par Ink/Stitch venaient des paths non fermés (→ `close_open_paths`) et des strokes-only (→ `normalize_stroke_only_paths`), pas du fill method.
+- S2 Iter 3 : `filter_speckle=2` / `color_precision=7` pour T02 coverage → neutre, 5ème couleur fondamentalement ambiguë dans le PNG source
+- Coefficient color_fidelity 1.5 → ne pas tenter, durcirait les scores sans améliorer la qualité réelle
+- Algorithme TSP pour jumps T05 → effort élevé, impact limité (ceiling naturel photo)
+- S5 Iter 2 : `corner_threshold` adaptatif VTracer → neutre sur les scores benchmark, conservé pour la logique
+- S7 : Fix thread_color.py pour T01 ΔLab=28.4 → IMPOSSIBLE. Lacune physique palette Brother (Pewter L≈34 → Warm Gray L≈82).
+
+**Prochaines priorités (Session 10 — audit calibration OBLIGATOIRE, reporté de S9) :**
+1. **[SCORING]** Audit calibration complet (multiple de 3 dépassé — S9 était une session features 8e/13a/13b)
+2. **[SCORING]** **T03** (écusson 12 col, 9 fils) : `force_max_svg_colors(8)` si n_colors≥10 → t_score 80→100 potentiel
+3. **[VECT]** Mesurer l'impact des fixes S8 (preprocessing texte, stroke thin → fill) sur T04/T13 en environnement complet (palette Brother + rembg)
+
+*(S9 fait : namespace inkstitch ✅, remove_background_fill coins arrondis ✅, close_open_paths ✅, découverte interdit fill_method — voir Session 9)*
 
 **Audit calibration scoring :**
-- Dernière révision : Session 4 (2026-06-17) — 6/7 critères fiables, jumps recalibré
+- Dernière révision : Session 4 (2026-06-17) — 6/7 critères fiables
 - S7 : coverage floor relevé 55→65 (calibration ciblée, pas audit complet)
 - Prochaine révision obligatoire : **Session 9** (multiple de 3)
 
@@ -57,6 +68,7 @@ Notes critiques :
 | 6 | 2026-06-18 | 94.4 | 95.1 | +0.7 | 18 |
 | 7 | 2026-06-20 | 95.1 | **95.7** | **+0.6** | 20 |
 | 8 | 2026-06-29 | 95.7 | à mesurer | — | 20 |
+| 9 | 2026-07-03 | — | 92.7 (baseline Windows, 19 tests) | n/c | 19 |
 
 Note S8 : session infrastructure — bug VTracer Python API corrigé (TypeError out_path), réorganisation tests par difficulté (niveau1/2/3/impossible), amélioration preprocessing texte PNG (SMOOTH supprimé pour détails fins), stroke-only thin paths convertis en fill (fix preview vide texte contours). Relancer le benchmark pour mesurer l'impact.
 
@@ -260,6 +272,36 @@ Note S7 : le delta +0.6 intègre 2 calibrations scoring (coverage floor 55→65,
 - Correction : `normalize_stroke_only_paths()` faisait `continue` pour les strokes < 1mm → path restait `stroke-only` → Ink/Stitch l'ignorait → preview vide. Suppression du `continue` → tous les strokes colorés convertis en fill.
 - Raison : Ink/Stitch ignore les paths sans fill. Même un trait fin doit être converti en fill pour être brodé.
 - Impact mesuré : à mesurer S9 sur T13 (texte fin contours SVG).
+
+---
+
+### Session 9 — 2026-07-03 (Windows)
+
+**Contexte** : session Phases 8e/13a/13b/landing (pas une session d'optimisation score). Benchmark de référence Windows : **92.7/100 (19 tests, T12 exclu — poppler absent)**, temps normaux ~3-5s/test.
+
+**Iter 1 — [SVG_PREP] `remove_background_fill` étendu aux coins arrondis** (`svg_utils.py`)
+- Correction : branche path — early-return à >20 segments (était >12), suppression si coverage >0.80 (la règle ≤12 & >0.85 est englobée)
+- Raison : fonds vectorisés en coins arrondis (13-20 segments) passaient le filtre → tatami massif dans le PES
+- Impact mesuré : 19/19 scores identiques (le garde-fou quasi-blanc L*>92 reste en amont)
+
+**Iter 2 — [SVG_PREP] `close_open_paths` + `inject_inkstitch_namespace`** (`svg_utils.py`, `tasks.py`)
+- `close_open_paths()` : ferme chaque sous-path fill sans Z (skip running_stitch/stroke-only ; skip si le sous-path suivant commence par `m` relatif — Z décalerait ses coordonnées)
+- `inject_inkstitch_namespace()` : injection textuelle regex sur `<svg>` — ElementTree n'émet la déclaration que si un attribut du namespace est sérialisé
+- Impact mesuré : 19/19 scores identiques
+
+**Iter 3 — [INK_STITCH] DÉCOUVERTE MAJEURE : fill_method=auto_fill = timeout** (`svg_utils.py`)
+- Symptôme : T01 10s→205s, T02 5s→timeout 300s après injection `fill_method="auto_fill"`
+- Expérience A/B contrôlée (même SVG, seule différence = 5 annotations) : A sans = 5.7s OK, B avec = timeout 300s
+- Décision : `inject_inkstitch_params` ne marque QUE les contours fins <1mm en `running_stitch` ; `_annotate_fill_paths_for_inkstitch` supprimé, remplacé par `_strip_fill_method_annotations` (purge les SVG stockés annotés par les anciennes versions)
+- Corollaire : les conversions prod annotées depuis le commit « forcer tatami fill » subissaient ce ralentissement — la purge le corrige aussi pour les re-conversions
+- `normalize_stroke_only_paths` skippe désormais les paths `inkstitch:stroke_method` (les choix running_stitch de l'éditeur étaient écrasés)
+
+**Iter 4 — [SCORING] seuils paramétrés par profil machine** (`previews.py`, `tasks.py`)
+- `_compute_quality_score(machine=...)` : seuils fils (ideal=min(7,max_threads), limite=max_threads, hard=+5) et dimensions (hoop, tolérance +40/+30mm) paramétrés
+- `machine=None` = comportement PR1050X strictement identique (protège le benchmark, vérifié T01=92/T08=94)
+- `force_max_svg_colors(max_colors=machine.max_threads)` — mono-aiguilles : max_threads=8 (≠ needles=1, re-enfilage standard)
+
+**Note** : l'audit calibration scoring complet prévu S9 n'a pas été fait (session features) — à faire en Session 10.
 
 ---
 

@@ -28,20 +28,26 @@ source_svg_path   Vectorisation          Extraction SVG
               │   selection-ungroup, object-to-path×2, vacuum-defs
               ├─ _inline_svg_styles()     ← style= CSS → attributs explicites
               ├─ _remove_invisible_elements()  ← display:none, opacity:0, fill:none
-              └─ _strip_clip_path_refs()  ← retire clip-path et mask
+              ├─ _strip_clip_path_refs()  ← retire clip-path et mask
+              └─ _strip_fill_method_annotations() ← purge fill_method hérités (S9)
            2. validate_svg_content()
            3. remove_background_fill()        ← raster seulement
            4. filter_micro_paths()
            5. reorder_svg_paths_for_minimal_jumps()
            6. group_paths_by_color()
            7. scale_svg_to_width_mm()         ← si target_width_mm défini
-           8. force_max_svg_colors(max=10)
+           8. force_max_svg_colors(max=machine.max_threads)  ← profil machine (défaut 10)
            9. snap_svg_colors_to_brother_palette()
           10. group_paths_by_color()          ← bis après fusion
-          11. normalize_stroke_only_paths()
+          11. inject_inkstitch_params()       ← contours fins <1mm → running_stitch
+          12. normalize_stroke_only_paths()   ← skip paths inkstitch:stroke_method
+          13. close_open_paths()              ← ferme les sous-paths fill sans Z
+          14. inject_inkstitch_namespace()    ← garantit xmlns:inkstitch sur le root
                         │
                         ▼
               convert_svg_to_pes()  [Ink/Stitch CLI]
+                        │
+              convert_pes_to_format()  ← si machine_format != PES (DST/JEF/VP3)
                         │
                         ▼
               generate_pes_preview()  [pyembroidery]
@@ -119,12 +125,19 @@ source_svg_path   Vectorisation          Extraction SVG
 | 5 | `reorder_svg_paths_for_minimal_jumps()` | Greedy nearest-neighbor sur centroids → minimise sauts |
 | 6 | `group_paths_by_color()` | Regroupe paths plats (VTracer) par couleur → moins de changements fil |
 | 7 | `scale_svg_to_width_mm()` | Redimensionne à target_width_mm (ratio conservé) |
-| 8 | `force_max_svg_colors(10)` | Fusionne itérativement couleurs Lab les plus proches → ≤10 fils |
+| 8 | `force_max_svg_colors(machine.max_threads)` | Fusionne itérativement couleurs Lab les plus proches → ≤N fils (profil machine, défaut 10) |
 | 9 | `snap_svg_colors_to_brother_palette()` | Snappe fill + stroke → fil Brother le plus proche (CIE Lab) |
 | 10 | `group_paths_by_color()` | Re-groupement après fusion couleurs |
-| 11 | `normalize_stroke_only_paths()` | Convertit paths stroke-only en fill. Rend le texte vectorisé brodable. |
+| 11 | `inject_inkstitch_params()` | Contours fins (<1mm de largeur bbox) → `inkstitch:stroke_method=running_stitch`. Ne touche jamais un attribut existant (choix éditeur préservés). |
+| 12 | `normalize_stroke_only_paths()` | Convertit paths stroke-only en fill. Skip les paths `inkstitch:stroke_method`. |
+| 13 | `close_open_paths()` | Ferme chaque sous-path fill sans `Z` — un path fill non fermé est ignoré silencieusement par Ink/Stitch. Skip running_stitch/stroke-only et sous-path suivi d'un `m` relatif. |
+| 14 | `inject_inkstitch_namespace()` | Garantit `xmlns:inkstitch` sur le root (injection textuelle — ElementTree ne l'émet que si un attribut du namespace est sérialisé). |
 
-**Ordre critique :** `force_max_colors` AVANT `snap` (réduction d'abord, snap sur couleurs réduites = plus précis).
+**Ordre critique :** `force_max_colors` AVANT `snap` (réduction d'abord, snap sur couleurs réduites = plus précis). `inject_inkstitch_params` AVANT `normalize_stroke_only_paths` (sinon plus de strokes à marquer). `close_open_paths` APRÈS (pour fermer aussi les fills issus de strokes convertis).
+
+**⚠️ Interdit — `inkstitch:fill_method="auto_fill"`** : mesuré S9 en A/B contrôlé, 5 annotations font passer Ink/Stitch de 5.7s à timeout 300s. Le remplissage par défaut d'Ink/Stitch est correct ; `prepare_svg_for_inkstitch` purge désormais les annotations héritées (`_strip_fill_method_annotations`).
+
+**Profil machine** : `_resolve_machine_params(job)` dans `tasks.py` — profil du user (`UserProfile.machine_params()`, get_or_create lazy) ou défauts PR1050X pour les jobs anonymes. Propagé à `force_max_svg_colors`, `extract_pes_metadata(machine=...)` (seuils fils + dimensions du scoring) et à l'export multi-format.
 
 #### Détail étape 1 : `prepare_svg_for_inkstitch()`
 
@@ -156,6 +169,12 @@ inkstitch --extension=zip --format-pes=True input.svg > output.zip
 
 - Timeout : 300s (configurable via `INKSTITCH_TIMEOUT`)
 - Extrait le premier `.pes` du ZIP stdout
+
+### 5b. Export multi-format (profil machine)
+
+**Fichier :** `conversions/services/inkstitch.py` → `convert_pes_to_format(pes_path, 'DST'|'JEF'|'VP3')`
+
+Si `machine_format != PES` : `pyembroidery.read(pes)` → `pyembroidery.write(pattern, .dst/.jef/.vp3)`. Le PES intermédiaire reste la source de vérité pour la preview et les métadonnées (DST ne stocke pas les couleurs). En cas d'échec d'export, le PES est conservé comme output. `JobDownloadView` dérive l'extension du fichier réel.
 
 ### 6. Preview et métadonnées
 
@@ -296,4 +315,4 @@ Avant chaque opération d'édition, un snapshot du SVG est sauvegardé dans `med
 
 ---
 
-*Dernière mise à jour : Phase 11 — éditeur avancé (undo/redo, réordonnement, type de point, densité)*
+*Dernière mise à jour : Phase 8e/13a — stabilisation Ink/Stitch (close_open_paths, namespace, purge fill_method) + profil machine (max_threads, hoop, export multi-format)*

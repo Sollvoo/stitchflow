@@ -250,6 +250,16 @@ Objectif : solidifier la base avant la beta. Corriger le bug couleurs, éliminer
 - [x] **Color picker palette Brother** dans l'éditeur SVG : bouton 🎨 par couleur → modal DaisyUI avec les ~60 fils Brother (filtrable par nom) → `SvgChangeColorView` + endpoint `POST /conversions/<id>/svg/change-color/` + `change_svg_color()` dans `svg_utils.py`
 - [x] Afficher le nom du fil Brother le plus proche de chaque couleur SVG dans l'éditeur — `get_brother_palette()` + `get_snap_preview()` injectés dans le contexte éditeur via `_render_svg_editor_response()`
 
+### 8e — Stabilisation pipeline SVG→PES (Ink/Stitch) ✅
+
+Objectif : corriger les problèmes structurels entre la vectorisation SVG et la conversion Ink/Stitch. Les phases précédentes ont optimisé PNG→SVG mais pas la préparation du SVG pour Ink/Stitch, ce qui causait des résultats catastrophiques sur les designs avec fond (tatami de fond, namespace manquant, paths non fermés).
+
+- [x] **Fix `remove_background_fill` pour rectangles arrondis** : shapes ≤20 segments couvrant >80% du viewBox supprimées (les fonds vectorisés en coins arrondis passaient le filtre >12 segments et finissaient en tatami massif)
+- [x] **Injection namespace `xmlns:inkstitch`** : `inject_inkstitch_namespace()` — injection textuelle (ElementTree n'émet la déclaration que si un attribut du namespace est sérialisé)
+- [x] **Fermeture automatique des paths non fermés** : `close_open_paths()` — ferme chaque sous-path fill sans `Z` (skip running_stitch, stroke-only, et sous-path suivi d'un `m` relatif)
+- [x] **Injection intelligente des attributs de point Ink/Stitch** : `inject_inkstitch_params()` — contour fin (<1mm) → `running_stitch`. ⚠️ L'injection `fill_method=auto_fill` prévue a été ABANDONNÉE et l'annotation systématique existante SUPPRIMÉE : mesuré en A/B, 5 annotations font passer Ink/Stitch de 5.7s à timeout 300s (voir converter-memory.md S9)
+- [x] **Téléchargement du SVG vectorisé** : bouton "Télécharger SVG" dans l'éditeur et la page résultat — endpoint `GET /conversions/<uuid>/svg/download/`
+
 ---
 
 ## Phase 9 — Authentification & comptes utilisateurs ✅
@@ -279,7 +289,7 @@ Objectif : donner à l'utilisateur une vue sur ses conversions passées. Nécess
 ### Prérequis avant d'ouvrir la beta
 
 - [ ] **Conversation avec l'utilisatrice beta** : lui expliquer le projet commercial, valider le prix (€3/conv.), sonder son réseau — à faire avant tout lancement public (voir `docs/strategie-marketing.md §2`)
-- [ ] **Landing page** `/landing/` avec liste d'attente email — titre, screenshot interface preview fils, formulaire email simple (voir `docs/strategie-marketing.md §4`)
+- [x] **Landing page** `/landing/` avec liste d'attente email — hero + bénéfices + encart honnêteté scope, model `WaitlistEmail` dans `core/` (email unique, doublon silencieux), admin
 
 ### Auth & sécurité ✅
 - [x] Réinitialisation de mot de passe par email (`/auth/password-reset/`) — Django PasswordResetView + Gmail SMTP
@@ -306,9 +316,14 @@ Objectif : passer de l'éditeur léger (supprimer/fusionner/recolorer) à un con
 
 - [x] **Réordonner les couches de broderie** : drag-and-drop des couleurs pour changer l'ordre de broderie (quelle zone est cousue en premier)
 - [x] **Choix du type de point** : remplissage (auto_fill) vs point courant (running_stitch) — par zone/couleur — injecte params Ink/Stitch dans le SVG (`inkstitch:stroke_method`)
-- [ ] **Prévisualisation animée** : simulation stitch-par-stitch dans le navigateur (JS + pyembroidery data) — voir la broderie se dessiner avant lancement machine
 - [x] **Densité par zone** : régler la densité des points couleur par couleur — injecte `inkstitch:row_spacing_mm` dans le SVG
 - [x] **Historique undo/redo** des modifications dans l'éditeur (snapshots fichiers, stack 20 niveaux)
+
+### Post-beta — à prioriser selon retours
+
+> Déplacé hors du chemin beta (juillet 2026) : valeur incrémentale non validée par des retours utilisateurs, la preview statique existe déjà. À remonter si l'utilisatrice beta exprime le besoin ("ça m'éviterait des tests machine").
+
+- [ ] **Prévisualisation animée** : simulation stitch-par-stitch dans le navigateur (JS + pyembroidery data) — voir la broderie se dessiner avant lancement machine
 - [ ] Éditeur visuel full-featured si besoin (SVG.js ou Fabric.js) — évaluer après retours beta
 
 ---
@@ -357,8 +372,34 @@ Objectif : transformer l'outil en service commercial. La beta a validé la valeu
 
 Objectif : étendre le marché au-delà de la machine Brother, et être honnête sur les limites de l'outil.
 
-- [ ] **Détection de complexité** : analyser le design avant conversion et afficher "Ce design est probablement trop complexe pour une conversion automatique de qualité" — recommander un prestataire humain pour les cas hors scope
-- [ ] Profil machine utilisateur : l'utilisateur renseigne sa machine → StitchFlow adapte les contraintes (zone de broderie, nb d'aiguilles, format natif)
-- [ ] Multi-formats d'export : DST (universel Tajima), JEF (Janome), VP3 (Viking/Husqvarna) — via pyembroidery déjà intégré
+### 13a — Profil machine utilisateur (initialisation) — PRIORITÉ AVANT PHASE 12
+
+Objectif : stocker la machine de l'utilisateur dans son profil et adapter toutes les contraintes en conséquence. Essentiel pour accueillir plusieurs beta users avec des machines différentes dès l'ouverture.
+
+**Modèles pris en charge initialement :**
+
+| Modèle | Aiguilles | Zone max | Format natif |
+|--------|-----------|----------|--------------|
+| Brother PR1050X | 10 | 360×200mm | PES v1 |
+| Brother PE800 | 1 | 130×180mm | PES v1 |
+| Brother SE700 | 1 | 180×130mm | PES v1 |
+| Janome MC500E | 1 | 200×200mm | JEF |
+| Personnalisé | custom | custom | PES/DST/JEF |
+
+- [x] Modèle `UserProfile` créé dans `users/models.py` (OneToOne User, signal post_save + data migration pour users existants) — l'app n'avait pas de models.py
+- [x] Champ `machine_model` (TextChoices) + `machine_needles` + `machine_hoop_width_mm` + `machine_hoop_height_mm` + `machine_format` (PES/DST/JEF/VP3)
+- [x] Page "Ma machine" (`/auth/profile/machine/`) : dropdown modèles + champs custom si "Personnalisé", auto-remplissage Alpine.js, presets forcés côté serveur dans `clean()`
+- [x] `force_max_svg_colors()` utilise `machine_max_threads` du profil — ⚠️ délibérément distinct de `machine_needles` : les machines mono-aiguille (PE800, SE700, MC500E) brodent le multicolore par re-enfilage, fusionner à 1 couleur serait destructeur (max_threads=8 pour elles)
+- [x] Score qualité : seuils fils et dimensions paramétrés par le profil (`extract_pes_metadata(machine=...)`, défaut None = PR1050X — protège le benchmark)
+- [x] Jobs anonymes : défauts PR1050X (décision utilisateur)
+- [x] Export multi-format : `convert_pes_to_format()` (pyembroidery) si `machine_format != PES` — le PES reste la source de vérité preview/métadonnées (DST ne stocke pas les couleurs)
+
+### 13b — Détection de complexité ✅ (base)
+
+- [x] **Détection de complexité** dans l'analyse pré-conversion : photo réaliste (ratio couleurs uniques >0.25 sur miniature 256px → badge rouge "recommander un prestataire"), dégradés (top 8 couleurs <40% des pixels → badge rouge), >15 couleurs → badge orange "qualité non garantie". Seuils mesurés sur tests/ réels — la variance locale était inutilisable (bords nets des logos ≈ 1100+).
+- [ ] Support Brother multi-modèles supplémentaires (PR680W, PR1055X, etc.)
+
+### 13c — API & intégrations (post-SaaS)
+
 - [ ] API REST pour intégrations tierces (ateliers de broderie, e-commerce Shopify/WooCommerce)
-- [ ] Support Brother multi-modèles (contraintes différentes selon le modèle)
+- [ ] Webhooks de notification (job terminé, erreur)
