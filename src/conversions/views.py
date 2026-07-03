@@ -482,6 +482,7 @@ class AnalyzeSVGView(View):
             return HttpResponse('', content_type='text/html')
 
         return render(request, 'conversions/partials/svg_suggestions.html', {
+            'very_complex': n_unique_colors > 15,
             'suggested_width': suggested_width,
             'small_paths_count': small_paths_count,
             'has_text': has_text,
@@ -573,13 +574,31 @@ class AnalyzePNGView(View):
                     low_dpi_warning = False
                     dpi_value = None
 
+                # Détection de complexité (Phase 13b) — seuils mesurés sur tests/ :
+                # photo bruit : ratio=0.95, top8=0.03 · dégradé : ratio=0.004, top8=0.03
+                # logos/écussons : ratio≤0.024, top8≥0.69
+                thumb = rgb.copy()
+                thumb.thumbnail((256, 256))
+                thumb_pixels = thumb.width * thumb.height
+                unique_colors = thumb.getcolors(maxcolors=thumb_pixels) or []
+                n_unique = len(unique_colors) or thumb_pixels
+                top8_share = sum(
+                    c for c, _ in sorted(unique_colors, key=lambda x: -x[0])[:8]
+                ) / thumb_pixels if unique_colors else 0.0
+
+                is_photo_like = n_unique / thumb_pixels > 0.25
+                # Dégradé : aucune couleur ne domine (pas d'aplats) sans être une photo
+                has_gradient = not is_photo_like and top8_share < 0.4
+
             estimated_threads = min(n_colors, significant_colors)
             final_height_mm = round(suggested_width * img_h / img_w) if img_w > 0 else suggested_width
             estimated_minutes = max(1, round(
                 (suggested_width * final_height_mm * 0.4 * max(estimated_threads, 1) * 0.7) / 600
             ))
 
-            if significant_colors > 10:
+            very_complex = significant_colors > 15
+
+            if is_photo_like or has_gradient or significant_colors > 10:
                 brodability = 'red'
             elif significant_colors > 6 or low_dpi_warning:
                 brodability = 'orange'
@@ -590,6 +609,9 @@ class AnalyzePNGView(View):
             return HttpResponse('', content_type='text/html')
 
         return render(request, 'conversions/partials/png_suggestions.html', {
+            'is_photo_like': is_photo_like,
+            'has_gradient': has_gradient,
+            'very_complex': very_complex,
             'n_colors': n_colors,
             'has_white_background': has_white_background,
             'has_bg_bonus': has_white_background,
