@@ -241,6 +241,33 @@ def reorder_svg_paths_for_minimal_jumps(svg_path: Path) -> None:
     tree.write(svg_path, encoding="unicode", xml_declaration=True)
 
 
+def _resolve_mm_per_unit(
+    root: ET.Element, svg_path: Path, target_width_mm: int
+) -> float:
+    """Facteur mm/unité SVG : target_width_mm prioritaire, sinon width déclaré, sinon 96 dpi."""
+    vb = root.get("viewBox", "")
+    vb_parts = vb.split() if vb else []
+
+    if target_width_mm > 0 and len(vb_parts) == 4:
+        try:
+            vb_w = float(vb_parts[2])
+            if vb_w > 0:
+                return target_width_mm / vb_w
+        except ValueError:
+            pass
+
+    w_mm, _ = get_svg_dimensions_mm(svg_path)
+    if w_mm and len(vb_parts) == 4:
+        try:
+            vb_w = float(vb_parts[2])
+            if vb_w > 0:
+                return w_mm / vb_w
+        except ValueError:
+            pass
+
+    return 25.4 / 96  # fallback 96 dpi
+
+
 def filter_micro_paths(
     svg_path: Path, target_width_mm: int, min_area_mm2: float = 0.1
 ) -> int:
@@ -255,33 +282,7 @@ def filter_micro_paths(
         return 0
 
     root = tree.getroot()
-
-    # Calcul du facteur d'échelle mm/unit
-    vb = root.get("viewBox", "")
-    vb_parts = vb.split() if vb else []
-    mm_per_unit: float | None = None
-
-    if target_width_mm > 0 and len(vb_parts) == 4:
-        try:
-            vb_w = float(vb_parts[2])
-            if vb_w > 0:
-                mm_per_unit = target_width_mm / vb_w
-        except ValueError:
-            pass
-
-    if mm_per_unit is None:
-        w_mm, _ = get_svg_dimensions_mm(svg_path)
-        if w_mm and len(vb_parts) == 4:
-            try:
-                vb_w = float(vb_parts[2])
-                if vb_w > 0:
-                    mm_per_unit = w_mm / vb_w
-            except ValueError:
-                pass
-
-    if mm_per_unit is None:
-        mm_per_unit = 25.4 / 96  # fallback 96 dpi
-
+    mm_per_unit = _resolve_mm_per_unit(root, svg_path, target_width_mm)
     ns_path = f"{{{_SVG_NS}}}path"
 
     def _path_area_mm2(el: ET.Element) -> float:
@@ -605,6 +606,67 @@ def close_open_paths(svg_path: Path) -> int:
     return modified
 
 
+def inject_inkstitch_params(svg_path: Path, target_width_mm: int = 0) -> dict[str, int]:
+    """
+    Marque les contours fins (< 1mm de largeur) en inkstitch:stroke_method=running_stitch.
+
+    N'écrase jamais un attribut existant — les choix utilisateur de l'éditeur
+    (set_stitch_type/set_stitch_density) sont préservés.
+
+    ⚠️ Ne PAS injecter inkstitch:fill_method="auto_fill" sur les paths fill :
+    mesuré Session 9, 5 annotations font passer Ink/Stitch de 5.7s à timeout
+    300s. Le remplissage par défaut d'Ink/Stitch est correct — les zones
+    ignorées venaient des paths non fermés (voir close_open_paths).
+    Retourne {"running_stitch": n}.
+    """
+    _MAX_STROKE_WIDTH_MM = 1.0
+
+    _register_svg_namespaces()
+    try:
+        tree = ET.parse(svg_path)
+    except ET.ParseError:
+        return {"running_stitch": 0}
+
+    root = tree.getroot()
+    mm_per_unit = _resolve_mm_per_unit(root, svg_path, target_width_mm)
+    ns_path = f"{{{_SVG_NS}}}path"
+    stats = {"running_stitch": 0}
+
+    for el in root.iter():
+        if el.tag not in (ns_path, "path"):
+            continue
+
+        fill = el.get("fill", "").strip().lower()
+        stroke = el.get("stroke", "").strip().lower()
+        has_fill = fill not in ("", "none", "transparent") and not fill.startswith("url(")
+        if has_fill or stroke in ("", "none"):
+            continue
+        if el.get(_INKSTITCH_STROKE_METHOD):
+            continue
+
+        d = el.get("d", "")
+        nums = [float(m) for m in _COORD_RE.findall(d)]
+        if len(nums) < 4:
+            continue
+        xs, ys = nums[0::2], nums[1::2]
+        bbox_w_mm = (max(xs) - min(xs)) * mm_per_unit
+        bbox_h_mm = (max(ys) - min(ys)) * mm_per_unit
+
+        if min(bbox_w_mm, bbox_h_mm) < _MAX_STROKE_WIDTH_MM:
+            el.set(_INKSTITCH_STROKE_METHOD, "running_stitch")
+            stats["running_stitch"] += 1
+
+    if any(stats.values()):
+        tree.write(svg_path, encoding="unicode", xml_declaration=True)
+        logger.info(
+            "[params] %d running_stitch injectés dans %s",
+            stats["running_stitch"],
+            svg_path.name,
+        )
+
+    return stats
+
+
 def force_max_svg_colors(svg_path: Path, max_colors: int = 10) -> int:
     """
     Garantit que le SVG n'a pas plus de max_colors couleurs de fill distinctes.
@@ -896,6 +958,10 @@ def normalize_stroke_only_paths(svg_path: Path) -> int:
         if el.tag not in (ns_path, "path"):
             continue
 
+        # Running_stitch explicite (éditeur ou inject_inkstitch_params) : contour légitime
+        if el.get(_INKSTITCH_STROKE_METHOD):
+            continue
+
         fill = el.get("fill", "").strip().lower()
         stroke = el.get("stroke", "").strip()
 
@@ -1129,41 +1195,22 @@ def _strip_clip_path_refs(root: ET.Element) -> int:
     return removed
 
 
-def _annotate_fill_paths_for_inkstitch(root: ET.Element) -> int:
+def _strip_fill_method_annotations(root: ET.Element) -> int:
     """
-    Ajoute inkstitch:fill_method="auto_fill" sur tous les paths remplis.
+    Retire les attributs inkstitch:fill_method="auto_fill" hérités d'anciennes
+    conversions (SVG vectorisés stockés avant Session 9).
 
-    Sans cet attribut, Ink/Stitch peut heuristiquement traiter des paths remplis
-    en running_stitch (contours seulement) au lieu de tatami fill, surtout pour
-    les paths complexes issus de vectorisation raster.
-    Ne touche pas aux éléments déjà annotés ou en running_stitch intentionnel.
-    Retourne le nombre d'éléments annotés.
+    ⚠️ Mesuré Session 9 : 5 annotations fill_method=auto_fill font passer
+    Ink/Stitch de 5.7s à timeout 300s. Le remplissage par défaut d'Ink/Stitch
+    est correct — ne jamais réinjecter cet attribut.
+    Retourne le nombre d'attributs supprimés.
     """
-    _FILL_TAGS = frozenset([
-        f"{{{_SVG_NS}}}path", "path",
-        f"{{{_SVG_NS}}}rect", "rect",
-        f"{{{_SVG_NS}}}circle", "circle",
-        f"{{{_SVG_NS}}}ellipse", "ellipse",
-        f"{{{_SVG_NS}}}polygon", "polygon",
-    ])
     _FILL_METHOD_ATTR = f"{{{_INKSTITCH_NS}}}fill_method"
-    _STROKE_METHOD_ATTR = f"{{{_INKSTITCH_NS}}}stroke_method"
-    _NONE_FILLS = frozenset(["none", "transparent", ""])
-
-    annotated = 0
+    removed = 0
     for el in root.iter():
-        if el.tag not in _FILL_TAGS:
-            continue
-        fill = el.get("fill", "").strip().lower()
-        if fill in _NONE_FILLS:
-            continue
-        if el.get(_STROKE_METHOD_ATTR):
-            continue
-        if el.get(_FILL_METHOD_ATTR):
-            continue
-        el.set(_FILL_METHOD_ATTR, "auto_fill")
-        annotated += 1
-    return annotated
+        if el.attrib.pop(_FILL_METHOD_ATTR, None) is not None:
+            removed += 1
+    return removed
 
 
 def prepare_svg_for_inkstitch(svg_path: Path) -> dict[str, int]:
@@ -1176,7 +1223,9 @@ def prepare_svg_for_inkstitch(svg_path: Path) -> dict[str, int]:
 
     Étape B — Python :
       styles CSS inlinés en attributs explicites, éléments invisibles supprimés,
-      clip-path et mask retirés, fills annotés inkstitch:fill_method=auto_fill.
+      clip-path et mask retirés, annotations fill_method héritées supprimées
+      (elles font exploser le temps de conversion Ink/Stitch — voir
+      _strip_fill_method_annotations).
 
     Retourne un dict de compteurs pour logging.
     """
@@ -1185,7 +1234,7 @@ def prepare_svg_for_inkstitch(svg_path: Path) -> dict[str, int]:
         "styles_inlined": 0,
         "invisible_removed": 0,
         "clips_stripped": 0,
-        "fills_annotated": 0,
+        "fill_methods_stripped": 0,
     }
 
     inkscape = shutil.which("inkscape")
@@ -1233,7 +1282,7 @@ def prepare_svg_for_inkstitch(svg_path: Path) -> dict[str, int]:
     stats["styles_inlined"] = _inline_svg_styles(root)
     stats["invisible_removed"] = _remove_invisible_elements(root)
     stats["clips_stripped"] = _strip_clip_path_refs(root)
-    stats["fills_annotated"] = _annotate_fill_paths_for_inkstitch(root)
+    stats["fill_methods_stripped"] = _strip_fill_method_annotations(root)
 
     if any(v > 0 for k, v in stats.items() if k != "inkscape_run"):
         tree.write(svg_path, encoding="unicode", xml_declaration=True)

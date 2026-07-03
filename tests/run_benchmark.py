@@ -59,6 +59,7 @@ from conversions.services.svg_utils import (
     force_max_svg_colors,
     group_paths_by_color,
     inject_inkstitch_namespace,
+    inject_inkstitch_params,
     normalize_stroke_only_paths,
     remove_background_fill,
     reorder_svg_paths_for_minimal_jumps,
@@ -293,6 +294,7 @@ def _apply_svg_postprocess(
         pass  # palette Brother absente → pas bloquant
 
     group_paths_by_color(svg_to_convert)
+    inject_inkstitch_params(svg_to_convert, target_width_mm)
     normalize_stroke_only_paths(svg_to_convert)
     close_open_paths(svg_to_convert)
     inject_inkstitch_namespace(svg_to_convert)

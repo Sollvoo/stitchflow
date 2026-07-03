@@ -26,6 +26,7 @@ def _run_svg_to_pes_pipeline(job, source_svg_path: Path) -> None:
         prepare_svg_for_inkstitch,
         close_open_paths,
         inject_inkstitch_namespace,
+        inject_inkstitch_params,
         _count_svg_unique_fills,
     )
     from .services.validation import validate_svg_content
@@ -87,6 +88,10 @@ def _run_svg_to_pes_pipeline(job, source_svg_path: Path) -> None:
                 '[snap] %d couleurs → %d fils effectifs après snap Brother pour job %s',
                 n_before_snap, n_after_snap, job.id,
             )
+
+        params_stats = inject_inkstitch_params(svg_to_convert, job.target_width_mm or 0)
+        if any(params_stats.values()):
+            logger.info('[params] %s pour job %s', params_stats, job.id)
 
         n_stroke = normalize_stroke_only_paths(svg_to_convert)
         if n_stroke > 0:
