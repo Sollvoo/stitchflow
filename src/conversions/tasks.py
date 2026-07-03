@@ -24,6 +24,8 @@ def _run_svg_to_pes_pipeline(job, source_svg_path: Path) -> None:
         group_paths_by_color,
         normalize_stroke_only_paths,
         prepare_svg_for_inkstitch,
+        close_open_paths,
+        inject_inkstitch_namespace,
         _count_svg_unique_fills,
     )
     from .services.validation import validate_svg_content
@@ -89,6 +91,12 @@ def _run_svg_to_pes_pipeline(job, source_svg_path: Path) -> None:
         n_stroke = normalize_stroke_only_paths(svg_to_convert)
         if n_stroke > 0:
             logger.info('[stroke] %d paths stroke-only convertis en fill pour job %s', n_stroke, job.id)
+
+        n_closed = close_open_paths(svg_to_convert)
+        if n_closed > 0:
+            logger.info('[close] %d paths fill fermés pour job %s', n_closed, job.id)
+
+        inject_inkstitch_namespace(svg_to_convert)
 
         pes_path = convert_svg_to_pes(svg_to_convert, output_dir)
 

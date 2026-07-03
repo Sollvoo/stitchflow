@@ -54,9 +54,11 @@ from conversions.services.png_processing import (
 from conversions.services.previews import extract_pes_metadata
 from conversions.services.svg_utils import (
     _count_svg_unique_fills,
+    close_open_paths,
     filter_micro_paths,
     force_max_svg_colors,
     group_paths_by_color,
+    inject_inkstitch_namespace,
     normalize_stroke_only_paths,
     remove_background_fill,
     reorder_svg_paths_for_minimal_jumps,
@@ -292,6 +294,8 @@ def _apply_svg_postprocess(
 
     group_paths_by_color(svg_to_convert)
     normalize_stroke_only_paths(svg_to_convert)
+    close_open_paths(svg_to_convert)
+    inject_inkstitch_namespace(svg_to_convert)
 
     return svg_to_convert, scaled_path
 

@@ -508,6 +508,103 @@ def remove_background_fill(svg_path: Path) -> int:
     return removed
 
 
+def inject_inkstitch_namespace(svg_path: Path) -> bool:
+    """
+    Garantit la déclaration xmlns:inkstitch sur l'élément <svg> racine.
+
+    ElementTree n'émet la déclaration que si au moins un attribut du namespace
+    est sérialisé — sans elle, Ink/Stitch ignore silencieusement tous les
+    attributs inkstitch:*. Injection textuelle idempotente.
+    Retourne True si la déclaration a été injectée.
+    """
+    try:
+        content = svg_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+
+    if "xmlns:inkstitch" in content:
+        return False
+
+    new_content, n = re.subn(
+        r"(<svg\b)",
+        f'\\1 xmlns:inkstitch="{_INKSTITCH_NS}"',
+        content,
+        count=1,
+    )
+    if n == 0:
+        return False
+
+    svg_path.write_text(new_content, encoding="utf-8")
+    logger.info("[ns] namespace inkstitch injecté dans %s", svg_path.name)
+    return True
+
+
+_PATH_CMD_RE = re.compile(r"[MmLlHhVvCcSsQqTtAaZz]")
+
+
+def close_open_paths(svg_path: Path) -> int:
+    """
+    Ferme les sous-paths non terminés par Z des paths destinés au remplissage.
+
+    Un path fill non fermé est ignoré silencieusement par Ink/Stitch (zone
+    manquante dans le PES sans erreur). Les paths running_stitch et stroke-only
+    ne sont pas touchés : un contour ouvert est légitime.
+    Retourne le nombre de paths modifiés.
+    """
+    _register_svg_namespaces()
+    try:
+        tree = ET.parse(svg_path)
+    except ET.ParseError:
+        return 0
+
+    root = tree.getroot()
+    ns_path = f"{{{_SVG_NS}}}path"
+    modified = 0
+
+    def _close_subpaths(d: str) -> str:
+        parts = [s.strip() for s in re.split(r"(?=[Mm])", d.strip()) if s.strip()]
+        closed = []
+        for i, sub in enumerate(parts):
+            cmds = _PATH_CMD_RE.findall(sub)
+            # Sous-path dégénéré (M seul, sans commande de dessin) : inchangé
+            if len(cmds) < 2:
+                closed.append(sub)
+                continue
+            if cmds[-1] not in ("Z", "z"):
+                # Z ramène le point courant au début du sous-path : si le
+                # sous-path suivant est en 'm' relatif, ses coordonnées
+                # seraient décalées — ne pas fermer dans ce cas.
+                next_is_relative = i + 1 < len(parts) and parts[i + 1][0] == "m"
+                if not next_is_relative:
+                    sub += " Z"
+            closed.append(sub)
+        return " ".join(closed)
+
+    for el in root.iter():
+        if el.tag not in (ns_path, "path"):
+            continue
+        fill = el.get("fill", "").strip().lower()
+        if fill in ("", "none", "transparent") or fill.startswith("url("):
+            continue
+        if el.get(_INKSTITCH_STROKE_METHOD):
+            continue
+        d = el.get("d", "")
+        if not d:
+            continue
+        new_d = _close_subpaths(d)
+        if new_d != d:
+            el.set("d", new_d)
+            modified += 1
+
+    if modified:
+        tree.write(svg_path, encoding="unicode", xml_declaration=True)
+        logger.info(
+            "[close] %d path(s) fill fermé(s) dans %s", modified, svg_path.name
+        )
+
+    return modified
+
+
 def force_max_svg_colors(svg_path: Path, max_colors: int = 10) -> int:
     """
     Garantit que le SVG n'a pas plus de max_colors couleurs de fill distinctes.
