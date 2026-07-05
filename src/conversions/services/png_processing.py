@@ -4,6 +4,7 @@ Pipeline : validation → nettoyage → suppression fond → quantization → ve
 """
 
 import logging
+import re
 import shutil
 import subprocess
 import sys
@@ -74,8 +75,20 @@ def convert_pdf_to_png(path: Path, dpi: int = 300) -> Path:
             "Installez poppler (brew install poppler) et pdf2image (pip install pdf2image)."
         ) from exc
 
+    poppler_path: str | None = None
     try:
-        pages = convert_from_path(str(path), dpi=dpi, first_page=1, last_page=1)
+        from django.conf import settings
+
+        vendor_bin = getattr(settings, "POPPLER_BIN_PATH", None)
+        if vendor_bin and not shutil.which("pdftoppm"):
+            poppler_path = str(vendor_bin)
+    except Exception:
+        pass
+
+    try:
+        pages = convert_from_path(
+            str(path), dpi=dpi, first_page=1, last_page=1, poppler_path=poppler_path
+        )
     except Exception as exc:
         raise PNGValidationError(f"Impossible de lire le PDF : {exc}") from exc
 
@@ -378,6 +391,25 @@ def _consolidate_svg_colors(svg_path: Path, n_colors: int) -> None:
         )
 
 
+def _mark_svg_disjoint(svg_path: Path) -> None:
+    """
+    Marque un SVG dont les formes sont disjointes par construction (VTracer cutout).
+    group_paths_by_color peut alors regrouper les couleurs sans garde de
+    chevauchement : aucun ordre de broderie ne peut recouvrir le design.
+    """
+    try:
+        content = svg_path.read_text(encoding="utf-8")
+        if "data-stitchflow-disjoint" in content:
+            return
+        new_content, n = re.subn(
+            r"(<svg\b)", '\\1 data-stitchflow-disjoint="1"', content, count=1
+        )
+        if n:
+            svg_path.write_text(new_content, encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        pass
+
+
 def _vectorize_vtracer_cli(
     png_path: Path,
     svg_path: Path,
@@ -409,7 +441,7 @@ def _vectorize_vtracer_cli(
             "--colormode",
             "color",
             "--hierarchical",
-            "stacked",
+            "cutout",
             "--mode",
             "spline",
             "--filter_speckle",
@@ -526,6 +558,7 @@ def vectorize_to_svg(png_path: Path, n_colors: int = 6) -> Path:
         if vtracer_bin and _vectorize_vtracer_cli(
             quantized_path, svg_path, n_colors, vtracer_bin, fine_details=fine_details
         ):
+            _mark_svg_disjoint(svg_path)
             return svg_path
 
         _preexec = None
@@ -550,6 +583,7 @@ def vectorize_to_svg(png_path: Path, n_colors: int = 6) -> Path:
         )
         if result.returncode == 0:
             logger.info("Vectorisation VTracer Python terminée : %s", png_path.name)
+            _mark_svg_disjoint(svg_path)
             return svg_path
 
         stderr = result.stderr.decode(errors="replace").strip()
@@ -580,7 +614,9 @@ def vectorize_to_svg(png_path: Path, n_colors: int = 6) -> Path:
 
 def _vectorize_inkscape(png_path: Path, svg_path: Path, n_colors: int = 6) -> Path:
     """Fallback : vectorisation via Inkscape object-trace (potrace multi-couleurs)."""
-    inkscape = shutil.which("inkscape")
+    from .svg_utils import find_inkscape
+
+    inkscape = find_inkscape()
     if not inkscape:
         svg_path.unlink(missing_ok=True)
         raise RuntimeError(
@@ -1007,7 +1043,9 @@ def _simplify_svg_nodes(svg_path: Path) -> None:
     Silencieux si Inkscape absent. Modifie le fichier en place.
     La broderie n'a pas besoin de précision sub-pixel : simplifier améliore les perfs inkstitch.
     """
-    inkscape = shutil.which("inkscape")
+    from .svg_utils import find_inkscape
+
+    inkscape = find_inkscape()
     if not inkscape:
         return
 

@@ -1,3 +1,9 @@
+{% if preview_data_uri %}
+<div class="border border-base-200 rounded-xl overflow-hidden bg-base-200/50 mt-2">
+  <p class="text-xs text-base-content/50 px-3 pt-2 pb-1">Aperçu de la première page</p>
+  <img src="{{ preview_data_uri }}" class="w-full max-h-48 object-contain p-2" alt="Aperçu PDF">
+</div>
+{% endif %}
 <div id="pdf-suggestions"
      {% if suggested_width %}x-init="$dispatch('pdf-analyzed', { width: {{ suggested_width }} })"{% endif %}
      class="alert {% if is_vector %}alert-success{% else %}alert-info{% endif %} py-3 px-4 text-sm gap-2 mt-2">
@@ -15,7 +21,7 @@
     {% if width_mm and height_mm %}
     Dimensions source : <strong>{{ width_mm }} × {{ height_mm }} mm</strong>.
     {% endif %}
-    {% if suggested_width %}Largeur suggérée <strong>{{ suggested_width }} mm</strong> appliquée.{% endif %}
+    {% if suggested_width %}Largeur suggérée <strong>{{ suggested_width }} mm</strong> pré-remplie ci-dessous.{% endif %}
     {% else %}
     <span class="font-medium">PDF scanné (image)</span> —
     Pipeline rasterisation 300 dpi → vectorisation → PES. Ajustez les paramètres ci-dessous.

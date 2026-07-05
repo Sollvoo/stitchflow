@@ -13,12 +13,17 @@ Configurer le chemin via la variable d'environnement INKSTITCH_EXECUTABLE
 dans votre fichier .env, ou laisser 'inkstitch' si l'exécutable est dans le PATH.
 """
 
+import logging
+import os
+import shutil
 import subprocess
 import tempfile
 import zipfile
 from pathlib import Path
 
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 
 class InkstitchError(Exception):
@@ -61,6 +66,39 @@ def humanize_inkstitch_error(raw_error: str) -> str:
     return raw_error
 
 
+_CACHE_CORRUPTION_MARKER = "database disk image is malformed"
+
+
+def _purge_inkstitch_stitch_plan_cache() -> bool:
+    """
+    Supprime le cache de plans de broderie d'Ink/Stitch (diskcache SQLite).
+
+    Un cache corrompu fait échouer TOUTES les conversions silencieusement
+    (exit 0, ZIP vide, erreur sqlite3 sur stderr). Le cache est régénéré
+    automatiquement par Ink/Stitch au prochain run.
+    """
+    candidates: list[Path] = []
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        candidates.append(
+            Path(local_app_data) / "inkstitch" / "inkstitch" / "cache" / "stitch_plan"
+        )
+    candidates.append(Path.home() / ".cache" / "inkstitch" / "stitch_plan")
+
+    for cache_dir in candidates:
+        if cache_dir.is_dir():
+            try:
+                shutil.rmtree(cache_dir)
+                logger.warning(
+                    "Cache Ink/Stitch corrompu purgé : %s — nouvelle tentative.",
+                    cache_dir,
+                )
+                return True
+            except OSError as exc:
+                logger.warning("Purge du cache Ink/Stitch impossible (%s) : %s", cache_dir, exc)
+    return False
+
+
 def convert_svg_to_pes(input_svg_path: Path, output_dir: Path) -> Path:
     """
     Convertit un fichier SVG en fichier PES via Ink/Stitch CLI.
@@ -92,25 +130,39 @@ def convert_svg_to_pes(input_svg_path: Path, output_dir: Path) -> Path:
         str(input_svg_path),
     ]
 
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            timeout=timeout,
-        )
-    except FileNotFoundError:
-        raise FileNotFoundError(
-            f"L'exécutable inkstitch est introuvable : '{executable}'. "
-            "Consultez CLAUDE.md pour les instructions d'installation."
-        )
-    except subprocess.TimeoutExpired:
-        raise InkstitchError(
-            f"La conversion a dépassé le délai de {timeout} secondes. "
-            "Essayez de réduire la taille ou le nombre de couleurs."
-        )
+    for attempt in range(2):
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                timeout=timeout,
+            )
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                f"L'exécutable inkstitch est introuvable : '{executable}'. "
+                "Consultez CLAUDE.md pour les instructions d'installation."
+            )
+        except subprocess.TimeoutExpired:
+            raise InkstitchError(
+                f"La conversion a dépassé le délai de {timeout} secondes. "
+                "Essayez de réduire la taille ou le nombre de couleurs."
+            )
+
+        stderr = result.stderr.decode("utf-8", errors="replace").strip()
+
+        # Cache diskcache corrompu : Ink/Stitch sort en exit 0 avec un ZIP
+        # vide et l'erreur sqlite3 sur stderr → purge + un seul retry.
+        if (
+            attempt == 0
+            and not result.stdout
+            and _CACHE_CORRUPTION_MARKER in stderr
+            and _purge_inkstitch_stitch_plan_cache()
+        ):
+            continue
+
+        break
 
     if result.returncode != 0:
-        stderr = result.stderr.decode("utf-8", errors="replace").strip()
         raise InkstitchError(
             f"Ink/Stitch a retourné le code {result.returncode}. "
             f"Stderr : {stderr or '(vide)'}"
@@ -118,6 +170,12 @@ def convert_svg_to_pes(input_svg_path: Path, output_dir: Path) -> Path:
 
     zip_data = result.stdout
     if not zip_data:
+        if _CACHE_CORRUPTION_MARKER in stderr:
+            raise InkstitchError(
+                "Le cache interne d'Ink/Stitch est corrompu et n'a pas pu être "
+                "réparé automatiquement. Supprimez le dossier "
+                "'inkstitch/cache/stitch_plan' dans AppData\\Local puis réessayez."
+            )
         raise InkstitchError(
             "Ink/Stitch n'a produit aucune sortie. "
             "Vérifiez que le SVG contient des éléments brodables."

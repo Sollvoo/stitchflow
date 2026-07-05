@@ -2,7 +2,7 @@
 <div
   id="conversion-status"
   hx-get="{% url 'conversions:status' job.id %}"
-  hx-trigger="every 2s"
+  hx-trigger="every 1s"
   hx-swap="outerHTML"
   class="card bg-base-100 shadow-lg border border-base-200"
 >
@@ -15,7 +15,7 @@
     {% else %}
     <h3 class="text-lg font-semibold text-base-content">Conversion en cours…</h3>
     <p class="text-sm text-base-content/50 mt-1">
-      {% if job.source_format == 'png' %}Vectorisation + Ink/Stitch génère votre fichier PES{% else %}Ink/Stitch génère votre fichier PES{% endif %}
+      {% if job.progress_step %}{{ job.progress_step }}{% elif job.source_format == 'png' %}Vectorisation + Ink/Stitch génère votre fichier PES{% else %}Ink/Stitch génère votre fichier PES{% endif %}
     </p>
     {% if estimated_seconds %}
     <p class="text-xs text-base-content/40 mt-1">
@@ -25,7 +25,10 @@
     <div class="badge badge-info badge-outline mt-3">processing</div>
     {% endif %}
     <div class="mt-6 w-full max-w-xs">
-      <progress class="progress progress-primary w-full"></progress>
+      <div class="w-full bg-base-300 rounded-full h-2 overflow-hidden">
+        <div class="bg-primary h-2 rounded-full transition-all duration-700 ease-out"
+             style="width: {{ job.progress_pct }}%"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -67,28 +70,28 @@
     </a>
     {% endif %}
 
-    <!-- Aperçu comparatif PNG source / SVG vectorisé (jobs PNG uniquement) -->
-    {% if job.source_format == 'png' and job.vectorized_svg_file %}
-    <div class="mt-6 w-full">
-      <p class="text-xs text-base-content/50 mb-2 text-left font-medium uppercase tracking-wide">Aperçu comparatif</p>
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <p class="text-xs text-center text-base-content/40 mb-1">PNG source</p>
-          <img src="{{ job.original_file.url }}" class="rounded-xl border border-base-200 w-full max-h-48 object-contain bg-white" alt="PNG source">
-        </div>
-        <div>
-          <p class="text-xs text-center text-base-content/40 mb-1">SVG vectorisé</p>
-          <img src="{{ job.vectorized_svg_file.url }}" class="rounded-xl border border-base-200 w-full max-h-48 object-contain bg-white" alt="SVG vectorisé">
-        </div>
-      </div>
-    </div>
-    {% endif %}
-
-    <!-- Aperçu PNG du motif brodé -->
+    <!-- Avant / Après : fichier source vs motif brodé (PES) -->
     {% if job.preview_file %}
     <div class="mt-6 w-full">
-      <p class="text-xs text-base-content/50 mb-2 text-left font-medium uppercase tracking-wide">Aperçu du motif brodé</p>
-      <img src="{{ job.preview_file.url }}" class="rounded-xl border border-base-200 w-full max-h-64 object-contain bg-white shadow-sm" alt="Aperçu du motif brodé">
+      <p class="text-xs text-base-content/50 mb-2 text-left font-medium uppercase tracking-wide">Avant / Après</p>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <p class="text-xs text-center text-base-content/40 mb-1">Original</p>
+          {% if job.source_format == 'pdf' %}
+            {% if job.vectorized_svg_file %}
+            <img src="{{ job.vectorized_svg_file.url }}" class="rounded-xl border border-base-200 w-full max-h-56 object-contain bg-white" alt="PDF vectorisé">
+            {% else %}
+            <div class="rounded-xl border border-base-200 w-full h-56 flex items-center justify-center bg-base-200/50 text-xs text-base-content/40">Aperçu PDF indisponible</div>
+            {% endif %}
+          {% else %}
+          <img src="{{ job.original_file.url }}" class="rounded-xl border border-base-200 w-full max-h-56 object-contain bg-white" alt="Fichier original">
+          {% endif %}
+        </div>
+        <div>
+          <p class="text-xs text-center text-base-content/40 mb-1">Résultat brodé</p>
+          <img src="{{ job.preview_file.url }}" class="rounded-xl border border-base-200 w-full max-h-56 object-contain bg-white shadow-sm" alt="Aperçu du motif brodé">
+        </div>
+      </div>
     </div>
     {% else %}
     <p class="text-xs text-base-content/30 mt-4">Aperçu non disponible</p>
@@ -98,7 +101,7 @@
     {% if job.conversion_metadata.thread_colors %}
     <div class="mt-6 w-full text-left">
       <p class="text-xs text-base-content/50 mb-2 font-medium uppercase tracking-wide">
-        Fils nécessaires — {{ job.conversion_metadata.color_changes }} couleur{{ job.conversion_metadata.color_changes|pluralize }}
+        Fils nécessaires — {{ job.conversion_metadata.thread_colors|length }} couleur{{ job.conversion_metadata.thread_colors|length|pluralize }}
       </p>
       <div class="flex flex-wrap gap-2">
         {% for thread in job.conversion_metadata.thread_colors %}
@@ -187,7 +190,12 @@
             {% if d.color_fidelity %}
             <li class="flex items-start gap-2">
               <span class="shrink-0 {% if d.color_fidelity.score >= 80 %}text-success{% elif d.color_fidelity.score >= 40 %}text-warning{% else %}text-error{% endif %}">●</span>
-              <span><strong>Fidélité couleurs :</strong> {{ d.color_fidelity.message }}</span>
+              <span>
+                <strong>Fidélité couleurs :</strong> {{ d.color_fidelity.message }}
+                {% if d.color_fidelity.notable_drift %}
+                <span class="badge badge-warning badge-xs ml-1">⚠ écart couleur notable</span>
+                {% endif %}
+              </span>
             </li>
             {% endif %}
             {% if d.coverage %}

@@ -61,6 +61,7 @@ from conversions.services.svg_utils import (
     inject_inkstitch_namespace,
     inject_inkstitch_params,
     normalize_stroke_only_paths,
+    prepare_svg_for_inkstitch,
     remove_background_fill,
     reorder_svg_paths_for_minimal_jumps,
     scale_svg_to_width_mm,
@@ -254,6 +255,42 @@ TESTS: list[dict[str, Any]] = [
         'target_width_mm': 80,
         'description': 'SVG géométrique multicolore — Easy-Medium',
     },
+    {
+        'test_id': 'T21',
+        'file': 'niveau2/logo/icone-app-arrondie.png',
+        'format': 'png',
+        'n_colors': 3,
+        'remove_bg': False,
+        'target_width_mm': 80,
+        'description': 'Icône app fond plein arrondi — Medium (verrou z-order cutout S10)',
+    },
+    {
+        'test_id': 'T22',
+        'file': 'niveau2/logo/logo-retro-4couleurs.png',
+        'format': 'png',
+        'n_colors': 4,
+        'remove_bg': False,
+        'target_width_mm': 80,
+        'description': 'Logo rétro 4 couleurs + texte fin — Medium (verrou z-order + texte S10)',
+    },
+    {
+        'test_id': 'T23',
+        'file': 'niveau3/texte/logo-typographique-complexe.svg',
+        'format': 'svg',
+        'n_colors': None,
+        'remove_bg': False,
+        'target_width_mm': 120,
+        'description': 'SVG <text> typographique complexe — Hard (verrou texte→paths Inkscape S12)',
+    },
+    {
+        'test_id': 'T24',
+        'file': 'niveau2/geometrique/mandala-6branches.svg',
+        'format': 'svg',
+        'n_colors': None,
+        'remove_bg': False,
+        'target_width_mm': 176,
+        'description': 'SVG mandala couches concentriques — Medium (verrou fils distincts + strokes intacts S12)',
+    },
 ]
 
 
@@ -272,6 +309,9 @@ def _apply_svg_postprocess(
     Retourne (svg_to_convert, scaled_path_to_cleanup).
     scaled_path_to_cleanup doit être supprimé par l'appelant.
     """
+    # Aligné sur tasks.py : Inkscape object-to-path (textes → paths brodables)
+    prepare_svg_for_inkstitch(svg_path)
+
     validate_svg_content(svg_path)
 
     if remove_bg:
@@ -543,7 +583,16 @@ def run_test(test: dict[str, Any]) -> dict[str, Any]:
         duration = round(time.time() - t0, 1)
         score = result['score']
         label = result['metadata'].get('quality_label', '?')
-        print(f'{score}/100 ({label}) [{duration}s]')
+
+        # Garde-fou fidélité couleur (S11) : générique à tous les tests, pas seulement T23 —
+        # un fil individuellement décalé (ΔE >= 20) ne doit jamais se cacher derrière "Excellent".
+        color_fidelity_regression = False
+        cf = result['score_details'].get('color_fidelity', {})
+        if cf.get('notable_drift') and label == 'Excellent':
+            color_fidelity_regression = True
+
+        suffix = ' ⚠ RÉGRESSION FIDÉLITÉ COULEUR (label Excellent malgré ΔE notable)' if color_fidelity_regression else ''
+        print(f'{score}/100 ({label}) [{duration}s]{suffix}')
 
         return {
             'test_id': test_id,
@@ -553,6 +602,7 @@ def run_test(test: dict[str, Any]) -> dict[str, Any]:
             'score': score,
             'score_details': result['score_details'],
             'metadata': result['metadata'],
+            'color_fidelity_regression': color_fidelity_regression,
             'error': None,
             'duration_s': duration,
         }
@@ -601,6 +651,11 @@ def print_summary(results: list[dict[str, Any]]) -> None:
         print(f'  Vers ceiling  : {toward_ceiling:.0f}% du chemin parcouru')
     else:
         print('\n  Aucun test réussi.')
+
+    regressions = [r['test_id'] for r in results if r.get('color_fidelity_regression')]
+    if regressions:
+        print(f'\n  ⚠ Régression fidélité couleur détectée sur : {", ".join(regressions)}')
+        print('    (label "Excellent" affiché malgré un fil individuel avec ΔE >= 20)')
 
 
 def main() -> None:

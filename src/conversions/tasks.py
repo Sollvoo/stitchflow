@@ -1,11 +1,19 @@
 import logging
 import shutil
+import time
 from pathlib import Path
 
 from celery import shared_task
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _set_progress(job, pct: int, step: str) -> None:
+    job.progress_pct = pct
+    job.progress_step = step
+    job.save(update_fields=['progress_pct', 'progress_step', 'updated_at'])
+    logger.debug('[progress] job %s: %d%% (%s)', job.id, pct, step)
 
 _DEFAULT_MACHINE = {
     'model': 'PR1050X',
@@ -30,10 +38,13 @@ def _resolve_machine_params(job) -> dict:
         return dict(_DEFAULT_MACHINE)
 
 
-def _run_svg_to_pes_pipeline(job, source_svg_path: Path) -> None:
+def _run_svg_to_pes_pipeline(job, source_svg_path: Path, start_time: float | None = None) -> None:
     """
     Pipeline commun SVG→PES : validation, post-traitement, Ink/Stitch, preview, métadonnées.
     Met à jour job.status = COMPLETED en fin. Propage les exceptions vers l'appelant.
+
+    start_time : time.monotonic() capturé au tout début de la tâche Celery appelante,
+    utilisé pour calculer job.duration_seconds (base de l'estimation historique).
     """
     from .services.inkstitch import (
         convert_svg_to_pes,
@@ -77,9 +88,12 @@ def _run_svg_to_pes_pipeline(job, source_svg_path: Path) -> None:
                 if n_excl > 0:
                     logger.info('[excluded] %d éléments supprimés (%s) pour job %s', n_excl, _excl_hexes, job.id)
 
+        _t0 = time.monotonic()
         prep_stats = prepare_svg_for_inkstitch(source_svg_path)
+        logger.debug('[timing] job %s : prepare_svg_for_inkstitch %.2fs', job.id, time.monotonic() - _t0)
         if any(v > 0 for v in prep_stats.values()):
             logger.info('[svg-prep] job %s : %s', job.id, prep_stats)
+        _set_progress(job, 10, 'Normalisation du dessin vectoriel')
 
         validate_svg_content(source_svg_path)
 
@@ -92,8 +106,11 @@ def _run_svg_to_pes_pipeline(job, source_svg_path: Path) -> None:
         if n_micro > 0:
             logger.info('[6b] %d micro-paths supprimés pour job %s', n_micro, job.id)
 
+        _t0 = time.monotonic()
         reorder_svg_paths_for_minimal_jumps(source_svg_path)
         group_paths_by_color(source_svg_path)
+        logger.debug('[timing] job %s : reorder+group %.2fs', job.id, time.monotonic() - _t0)
+        _set_progress(job, 25, 'Optimisation de l\'ordre de broderie')
 
         svg_to_convert = source_svg_path
         if job.target_width_mm:
@@ -101,6 +118,7 @@ def _run_svg_to_pes_pipeline(job, source_svg_path: Path) -> None:
             svg_to_convert = scaled_svg_path
             logger.info("SVG redimensionné à %dmm pour job %s", job.target_width_mm, job.id)
 
+        _t0 = time.monotonic()
         n_merged = force_max_svg_colors(svg_to_convert, max_colors=machine['max_threads'])
         if n_merged > 0:
             logger.info(
@@ -122,6 +140,8 @@ def _run_svg_to_pes_pipeline(job, source_svg_path: Path) -> None:
                 '[snap] %d couleurs → %d fils effectifs après snap Brother pour job %s',
                 n_before_snap, n_after_snap, job.id,
             )
+        logger.debug('[timing] job %s : couleurs (fusion+snap) %.2fs', job.id, time.monotonic() - _t0)
+        _set_progress(job, 45, 'Adaptation de la palette de fils')
 
         params_stats = inject_inkstitch_params(svg_to_convert, job.target_width_mm or 0)
         if any(params_stats.values()):
@@ -136,8 +156,19 @@ def _run_svg_to_pes_pipeline(job, source_svg_path: Path) -> None:
             logger.info('[close] %d paths fill fermés pour job %s', n_closed, job.id)
 
         inject_inkstitch_namespace(svg_to_convert)
+        _set_progress(job, 55, 'Préparation des paramètres de broderie')
 
+        prepared_dir = Path(settings.MEDIA_ROOT) / 'conversions' / 'prepared'
+        prepared_dir.mkdir(parents=True, exist_ok=True)
+        prepared_svg_path = prepared_dir / f"{job.id}_prepared.svg"
+        shutil.copy2(svg_to_convert, prepared_svg_path)
+        job.prepared_svg_file.name = str(prepared_svg_path.relative_to(settings.MEDIA_ROOT))
+        job.save(update_fields=['prepared_svg_file', 'updated_at'])
+
+        _t0 = time.monotonic()
         pes_path = convert_svg_to_pes(svg_to_convert, output_dir)
+        logger.debug('[timing] job %s : convert_svg_to_pes (Ink/Stitch) %.2fs', job.id, time.monotonic() - _t0)
+        _set_progress(job, 90, 'Génération du fichier de broderie')
 
         # Export multi-format selon le profil machine — le PES reste la source
         # de vérité pour la preview et les métadonnées (DST ne stocke pas les couleurs)
@@ -155,6 +186,10 @@ def _run_svg_to_pes_pipeline(job, source_svg_path: Path) -> None:
 
         job.output_file.name = str(output_path.relative_to(settings.MEDIA_ROOT))
         job.status = job.__class__.Status.COMPLETED
+        job.progress_pct = 100
+        job.progress_step = 'Conversion terminée'
+        if start_time is not None:
+            job.duration_seconds = round(time.monotonic() - start_time, 1)
 
         try:
             preview_path = generate_pes_preview(pes_path, preview_dir)
@@ -173,7 +208,10 @@ def _run_svg_to_pes_pipeline(job, source_svg_path: Path) -> None:
         except Exception as meta_exc:
             logger.warning("Metadata échouée pour job %s : %s", job.id, meta_exc)
 
-        job.save(update_fields=['status', 'output_file', 'preview_file', 'conversion_metadata', 'updated_at'])
+        job.save(update_fields=[
+            'status', 'output_file', 'preview_file', 'conversion_metadata',
+            'progress_pct', 'progress_step', 'duration_seconds', 'updated_at',
+        ])
         logger.info("Conversion job %s terminée : %s", job.id, pes_path)
 
     finally:
@@ -201,9 +239,12 @@ def process_conversion_job(self, job_id: str) -> None:
         logger.error("ConversionJob %s introuvable.", job_id)
         return
 
+    start_time = time.monotonic()
     job.status = ConversionJob.Status.PROCESSING
     job.error_message = ''
-    job.save(update_fields=['status', 'error_message', 'updated_at'])
+    job.progress_pct = 0
+    job.progress_step = ''
+    job.save(update_fields=['status', 'error_message', 'progress_pct', 'progress_step', 'updated_at'])
     logger.info("Démarrage conversion job %s (format: %s)", job_id, job.source_format)
 
     tmp_png_paths: list[Path] = []
@@ -231,15 +272,19 @@ def process_conversion_job(self, job_id: str) -> None:
             extract_vector_svg_from_pdf(input_path, tmp_svg_path)
 
             if is_vector_pdf_svg(tmp_svg_path):
-                logger.info('[pdf] PDF vectoriel détecté — pipeline direct SVG→PES pour job %s', job_id)
+                logger.info('[pdf] PDF vectoriel détecté — validation SVG avant PES pour job %s', job_id)
                 postprocess_vector_svg(tmp_svg_path)
 
                 dest_svg = vectorized_dir / f'{job.id}.svg'
                 shutil.copy2(tmp_svg_path, dest_svg)
                 job.vectorized_svg_file.name = str(dest_svg.relative_to(settings.MEDIA_ROOT))
-                job.save(update_fields=['vectorized_svg_file', 'updated_at'])
 
-                source_svg_path = tmp_svg_path
+                # Pause : l'utilisateur valide le SVG avant la conversion PES,
+                # comme pour PNG/JPEG/WebP (éditeur couleurs/densité)
+                job.status = ConversionJob.Status.AWAITING_SVG_VALIDATION
+                job.save(update_fields=['status', 'vectorized_svg_file', 'updated_at'])
+                logger.info("Job %s en attente de validation SVG (%s)", job_id, dest_svg.name)
+                return
             else:
                 logger.info('[pdf] PDF scanné détecté — fallback pipeline raster pour job %s', job_id)
                 tmp_svg_path.unlink(missing_ok=True)
@@ -272,17 +317,27 @@ def process_conversion_job(self, job_id: str) -> None:
                 logger.info("%s converti en PNG pour job %s", job.source_format.upper(), job_id)
 
             validate_png(raster_path)
+            _set_progress(job, 20, 'Validation de l\'image')
 
+            _t0 = time.monotonic()
             processed_path = preprocess_image(raster_path)
             tmp_png_paths.append(processed_path)
+            logger.debug('[timing] job %s : preprocess_image %.2fs', job_id, time.monotonic() - _t0)
+            _set_progress(job, 45, 'Préparation de l\'image')
 
             if job.remove_background:
+                _t0 = time.monotonic()
                 processed_path = remove_background(processed_path)
                 tmp_png_paths.append(processed_path)
+                logger.debug('[timing] job %s : remove_background %.2fs', job_id, time.monotonic() - _t0)
                 logger.info("Suppression du fond effectuée pour job %s", job_id)
+                _set_progress(job, 65, 'Suppression du fond')
 
+            _t0 = time.monotonic()
             tmp_svg_path = vectorize_to_svg(processed_path, n_colors=job.n_colors or 6)
+            logger.debug('[timing] job %s : vectorize_to_svg %.2fs', job_id, time.monotonic() - _t0)
             logger.info("Vectorisation SVG terminée pour job %s", job_id)
+            _set_progress(job, 95, 'Vectorisation du dessin')
 
             dest_svg = vectorized_dir / f'{job.id}.svg'
             shutil.copy2(tmp_svg_path, dest_svg)
@@ -290,7 +345,9 @@ def process_conversion_job(self, job_id: str) -> None:
 
             # Pause : l'utilisateur valide le SVG avant la conversion PES
             job.status = ConversionJob.Status.AWAITING_SVG_VALIDATION
-            job.save(update_fields=['status', 'vectorized_svg_file', 'updated_at'])
+            job.progress_pct = 100
+            job.progress_step = 'En attente de validation'
+            job.save(update_fields=['status', 'vectorized_svg_file', 'progress_pct', 'progress_step', 'updated_at'])
             logger.info("Job %s en attente de validation SVG (%s)", job_id, dest_svg.name)
             return
 
@@ -299,7 +356,7 @@ def process_conversion_job(self, job_id: str) -> None:
             source_svg_path = input_path
 
         # --- Pipeline SVG→PES (SVG direct uniquement depuis ici) ---
-        _run_svg_to_pes_pipeline(job, source_svg_path)
+        _run_svg_to_pes_pipeline(job, source_svg_path, start_time=start_time)
 
     except PDFExtractionError as exc:
         logger.error("Extraction PDF échouée pour job %s : %s", job_id, exc)
@@ -369,9 +426,12 @@ def finalize_svg_to_pes(self, job_id: str) -> None:
         job.save(update_fields=['status', 'error_message', 'updated_at'])
         return
 
+    start_time = time.monotonic()
     job.status = ConversionJob.Status.PROCESSING
     job.error_message = ''
-    job.save(update_fields=['status', 'error_message', 'updated_at'])
+    job.progress_pct = 0
+    job.progress_step = ''
+    job.save(update_fields=['status', 'error_message', 'progress_pct', 'progress_step', 'updated_at'])
     logger.info("Finalisation PES job %s depuis %s", job_id, job.vectorized_svg_file.name)
 
     svg_path = Path(settings.MEDIA_ROOT) / job.vectorized_svg_file.name
@@ -383,7 +443,7 @@ def finalize_svg_to_pes(self, job_id: str) -> None:
     shutil.copy2(svg_path, tmp_working_svg)
 
     try:
-        _run_svg_to_pes_pipeline(job, tmp_working_svg)
+        _run_svg_to_pes_pipeline(job, tmp_working_svg, start_time=start_time)
 
     except SVGValidationError as exc:
         logger.error("Validation SVG échouée pour job %s : %s", job_id, exc)

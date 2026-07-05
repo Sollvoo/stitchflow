@@ -349,14 +349,10 @@ class JobStatusView(View):
 
         estimated_seconds = None
         if job.status == job.Status.PROCESSING:
-            if job.source_format in ('png', 'jpeg', 'webp'):
-                n = job.n_colors or 6
-                estimated_seconds = 4 + int(n * 1.5) + (4 if job.remove_background else 0)
-            elif job.source_format == 'pdf':
-                n = job.n_colors or 6
-                estimated_seconds = 10 + int(n * 1.5) + (4 if job.remove_background else 0)
-            else:
-                estimated_seconds = 6
+            from .services.estimation import estimate_duration_seconds
+            estimated_seconds = estimate_duration_seconds(
+                job.source_format, job.n_colors, job.remove_background
+            )
 
         return render_to_string(
             'conversions/partials/conversion_status.html',
@@ -637,13 +633,16 @@ class AnalyzePDFView(View):
     """
 
     def post(self, request):
+        import base64
         import tempfile
         from pathlib import Path as _Path
         from .services.pdf_processing import (
             extract_vector_svg_from_pdf,
             is_vector_pdf_svg,
+            normalize_svg_dimensions_to_mm,
             PDFExtractionError,
         )
+        from .services.png_processing import convert_pdf_to_png, PNGValidationError
 
         file = request.FILES.get('original_file')
         if not file:
@@ -658,26 +657,16 @@ class AnalyzePDFView(View):
             tmp_svg = tmp_pdf.with_suffix('.svg')
             is_vector = False
             width_mm = height_mm = suggested_width = None
+            preview_data_uri = None
 
             try:
                 extract_vector_svg_from_pdf(tmp_pdf, tmp_svg)
                 is_vector = is_vector_pdf_svg(tmp_svg)
 
                 if is_vector and tmp_svg.exists():
-                    import xml.etree.ElementTree as ET
-                    import re as _re
-                    root = ET.parse(tmp_svg).getroot()
-                    for attr in ('width', 'height'):
-                        val = root.get(attr, '').strip()
-                        m = _re.match(r'^([0-9.]+)pt$', val)
-                        if m:
-                            mm = round(float(m.group(1)) * 0.3527, 1)
-                            if attr == 'width':
-                                width_mm = mm
-                            else:
-                                height_mm = mm
-
-                    if width_mm:
+                    dims = normalize_svg_dimensions_to_mm(tmp_svg)
+                    if dims:
+                        width_mm, height_mm = dims
                         if width_mm < 20:
                             suggested_width = 40
                         elif width_mm > 360:
@@ -688,9 +677,20 @@ class AnalyzePDFView(View):
             except (PDFExtractionError, Exception):
                 pass
             finally:
-                tmp_pdf.unlink(missing_ok=True)
                 if tmp_svg.exists():
                     tmp_svg.unlink(missing_ok=True)
+
+            try:
+                preview_png = convert_pdf_to_png(tmp_pdf, dpi=100)
+                preview_data_uri = (
+                    'data:image/png;base64,'
+                    + base64.b64encode(preview_png.read_bytes()).decode('ascii')
+                )
+                preview_png.unlink(missing_ok=True)
+            except (PNGValidationError, Exception):
+                pass
+            finally:
+                tmp_pdf.unlink(missing_ok=True)
 
         except Exception:
             return HttpResponse('', content_type='text/html')
@@ -700,6 +700,7 @@ class AnalyzePDFView(View):
             'width_mm': width_mm,
             'height_mm': height_mm,
             'suggested_width': suggested_width,
+            'preview_data_uri': preview_data_uri,
         })
 
 

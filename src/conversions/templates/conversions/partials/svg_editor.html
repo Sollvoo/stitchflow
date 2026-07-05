@@ -1,3 +1,4 @@
+{% load thread_fidelity %}
 <div class="card-body"
      x-data="svgEditor({ densities: { {% for c in colors_with_snap %}'{{ c.hex }}': {{ c.density|stringformat:'.4f' }},{% endfor %} } })">
 
@@ -219,6 +220,11 @@
             {% if color.collision %}
             <span class="badge badge-warning badge-xs shrink-0">⚠ fusionné</span>
             {% endif %}
+            {% with drift=color.hex|delta_e:color.brother_hex %}
+            {% if drift >= 20 %}
+            <span class="badge badge-warning badge-xs shrink-0" title="Écart perceptuel notable entre la couleur source et le fil Brother sélectionné">⚠ écart couleur (ΔE {{ drift|floatformat:0 }})</span>
+            {% endif %}
+            {% endwith %}
           </div>
           {% else %}
           <div class="flex-1"></div>

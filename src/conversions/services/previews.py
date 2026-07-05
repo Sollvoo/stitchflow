@@ -12,6 +12,8 @@ from pathlib import Path
 import pyembroidery
 from PIL import Image, ImageDraw, ImageFilter
 
+from .thread_color import NOTABLE_DELTA_E_THRESHOLD
+
 logger = logging.getLogger(__name__)
 
 # Vitesse conservative de broderie pour estimation du temps (points/minute)
@@ -99,7 +101,8 @@ def _is_near_white(r: int, g: int, b: int, threshold: int = 235) -> bool:
 
 def _extract_svg_colors(svg_path: Path) -> list[tuple[int, int, int]]:
     """
-    Extrait les couleurs fill distinctes non-blanches du SVG.
+    Extrait les couleurs brodables distinctes non-blanches du SVG : fills colorés
+    et strokes des éléments stroke-only (contours brodés en points courants).
     Retourne une liste de tuples (R, G, B).
     """
     try:
@@ -111,16 +114,54 @@ def _extract_svg_colors(svg_path: Path) -> list[tuple[int, int, int]]:
     colors: list[tuple[int, int, int]] = []
     for el in root.iter():
         fill = el.get("fill", "")
-        if not fill.startswith("#") or len(fill) != 7 or fill in seen:
+        color = fill
+        if not (color.startswith("#") and len(color) == 7):
+            if fill in ("", "none", "transparent"):
+                stroke = el.get("stroke", "")
+                if stroke.startswith("#") and len(stroke) == 7:
+                    color = stroke
+        if not color.startswith("#") or len(color) != 7 or color in seen:
             continue
-        seen.add(fill)
+        seen.add(color)
         try:
-            r, g, b = int(fill[1:3], 16), int(fill[3:5], 16), int(fill[5:7], 16)
+            r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
         except ValueError:
             continue
         if not _is_near_white(r, g, b):
             colors.append((r, g, b))
     return colors
+
+
+def _is_contour_only_design(svg_path: Path) -> bool:
+    """
+    True si le SVG ne contient aucun élément à fill coloré et au moins un élément
+    stroke-only : design 100% contours (points courants), pour lequel les critères
+    points/densité calibrés sur les remplissages n'ont pas de sens.
+    """
+    try:
+        root = ET.parse(svg_path).getroot()
+    except (ET.ParseError, OSError):
+        return False
+
+    svg_ns = "{http://www.w3.org/2000/svg}"
+    shape_tags = {
+        f"{svg_ns}{t}"
+        for t in ("path", "rect", "circle", "ellipse", "polygon", "polyline", "line")
+    }
+    has_stroke_only = False
+    for el in root.iter():
+        if el.tag not in shape_tags:
+            continue
+        fill = el.get("fill", "")
+        if fill in ("none", "transparent"):
+            stroke = el.get("stroke", "")
+            if stroke.startswith("#") and len(stroke) == 7:
+                has_stroke_only = True
+            continue
+        # fill hex explicite OU absent (défaut SVG = noir) → design avec remplissage
+        if fill == "" or (fill.startswith("#") and len(fill) == 7):
+            return False
+    return has_stroke_only
 
 
 # ---------------------------------------------------------------------------
@@ -131,11 +172,15 @@ def _extract_svg_colors(svg_path: Path) -> list[tuple[int, int, int]]:
 def _score_color_fidelity(
     pattern: pyembroidery.EmbPattern,
     svg_path: Path,
-) -> tuple[int, str]:
+) -> tuple[int, str, float]:
     """
     Mesure la distance perceptuelle (Lab) entre les couleurs du SVG source
     et les fils du PES. Une distance Lab moyenne faible = bonne fidélité.
-    Retourne (score 0-100, message).
+    Retourne (score 0-100, message, max_dist).
+
+    max_dist = pire écart ΔE parmi les couleurs (une seule couleur très décalée
+    peut être masquée par la moyenne si les autres couleurs sont fidèles — c'est
+    max_dist qui permet de détecter ce cas et de ne pas afficher "Excellent").
     """
     svg_colors = _extract_svg_colors(svg_path)
     threadlist = pattern.threadlist or []
@@ -147,9 +192,9 @@ def _score_color_fidelity(
             pes_colors.append((r, g, b))
 
     if not svg_colors:
-        return 50, "Couleurs SVG non lisibles"
+        return 50, "Couleurs SVG non lisibles", 0.0
     if not pes_colors:
-        return 0, "Aucun fil de couleur dans le PES"
+        return 0, "Aucun fil de couleur dans le PES", 0.0
 
     svg_labs = [_rgb_to_lab(*c) for c in svg_colors]
     pes_labs = [_rgb_to_lab(*c) for c in pes_colors]
@@ -157,6 +202,7 @@ def _score_color_fidelity(
     # Distance Lab moyenne : pour chaque couleur SVG → fil PES le plus proche
     distances = [min(_lab_distance(sl, pl) for pl in pes_labs) for sl in svg_labs]
     mean_dist = sum(distances) / len(distances)
+    max_dist = max(distances)
 
     # Pénalité si le PES a bien moins de fils que le SVG n'a de couleurs
     # (ex: SVG 10 couleurs → PES 2 fils = vectorisation partielle)
@@ -173,6 +219,7 @@ def _score_color_fidelity(
         score = max(score, 70)
 
     fils = f"{len(pes_colors)}/{len(svg_colors)} fil(s)"
+    notable = max_dist >= NOTABLE_DELTA_E_THRESHOLD
     if score >= 85:
         msg = f"Couleurs fidèles (Δ Lab moyen {mean_dist:.1f}, {fils})"
     elif score >= 60:
@@ -184,7 +231,10 @@ def _score_color_fidelity(
             f"Mauvaise fidélité couleurs (Δ Lab {mean_dist:.1f}, {fils} "
             "— vectorisation partielle ?)"
         )
-    return score, msg
+    if notable and max_dist > mean_dist + 5:
+        # La moyenne masque un fil individuellement très décalé (ΔE max ≠ ΔE moyen)
+        msg += f" — ⚠ au moins 1 fil dérive fortement (ΔE {max_dist:.1f})"
+    return score, msg, max_dist
 
 
 def _score_vectorization_coverage(
@@ -268,7 +318,11 @@ def _compute_quality_score(
 
     raw_threadlist = pattern.threadlist or []
     threadlist, _ = _filter_pes_v1_color_breaks(raw_threadlist)
-    thread_count = len(threadlist)
+    # Fils distincts = aiguilles réellement mobilisées. Un même fil peut revenir
+    # plusieurs fois dans la séquence (arrêts z-order légitimes : fond → forme →
+    # même fond) sans consommer d'aiguille supplémentaire sur la machine.
+    color_stops = len(threadlist)
+    thread_count = len({t.color for t in threadlist})
     stitch_count = pattern.count_stitch_commands(pyembroidery.STITCH)
     jump_count = pattern.count_stitch_commands(pyembroidery.JUMP)
 
@@ -299,6 +353,9 @@ def _compute_quality_score(
     else:
         t_score = 0
         t_msg = f"{thread_count} fils — impossible sans re-enfilage multiple"
+
+    if color_stops > thread_count:
+        t_msg += f" ({color_stops} arrêts de couleur pour {thread_count} fils)"
 
     # 2. Points (18%) — PR1050X : < 500k recommandé
     if stitch_count < 100:
@@ -416,11 +473,40 @@ def _compute_quality_score(
             f"{stitch_count} points — design compact dense (densité {density:.2f} pts/mm²)"
         )
 
+    # Correction density-aware niveau 3 (S12) : 500-1200 points avec densité optimale
+    # (0.5-20 pts/mm²) = petit design sain, pas une vectorisation pauvre. Le peu de
+    # points reflète la taille du design, pas un défaut.
+    if s_score == 60 and 0.5 <= density <= 20:
+        s_score = 90
+        s_msg = (
+            f"{stitch_count} points — petit design sain (densité {density:.1f} pts/mm²)"
+        )
+
+    # Design 100% contours (points courants) : les seuils points/densité sont
+    # calibrés pour des remplissages. Un contour propre produit naturellement
+    # très peu de points et une densité quasi nulle — c'est le résultat correct,
+    # pas un design raté (cas 04-contour-only S12 : 3 cercles parfaits notés 65).
+    is_contour_design = (
+        source_svg_path is not None
+        and source_svg_path.exists()
+        and _is_contour_only_design(source_svg_path)
+    )
+    if is_contour_design and stitch_count >= 100:
+        if s_score < 90:
+            s_score = 90
+            s_msg = f"{stitch_count} points — design contours (points courants), normal"
+        if dens_score < 90:
+            dens_score = 90
+            dens_msg = (
+                f"{density:.2f} pts/mm² — densité non applicable (design contours)"
+            )
+
     # 6. Fidélité couleurs SVG→PES (18%)
     if source_svg_path and source_svg_path.exists():
-        c_score, c_msg = _score_color_fidelity(pattern, source_svg_path)
+        c_score, c_msg, c_max_delta_e = _score_color_fidelity(pattern, source_svg_path)
     else:
-        c_score, c_msg = 50, "SVG source non disponible pour comparaison couleurs"
+        c_score, c_msg, c_max_delta_e = 50, "SVG source non disponible pour comparaison couleurs", 0.0
+    c_notable_drift = c_max_delta_e >= NOTABLE_DELTA_E_THRESHOLD
 
     # 7. Couverture vectorisation (12%)
     if source_svg_path and source_svg_path.exists():
@@ -430,6 +516,21 @@ def _compute_quality_score(
     else:
         cov_score, cov_msg = 50, "SVG source non disponible"
 
+    # Garde-fou texte perdu : des <text> non convertis en paths sont IGNORÉS par
+    # Ink/Stitch — le PES est amputé de son texte sans aucune erreur. Un design
+    # sans son texte ne peut pas être "Excellent", quel que soit le reste.
+    text_lost = 0
+    if source_svg_path and source_svg_path.exists():
+        from .svg_utils import count_unconverted_text_elements
+
+        text_lost = count_unconverted_text_elements(source_svg_path)
+    if text_lost > 0:
+        cov_score = min(cov_score, 40)
+        cov_msg = (
+            f"{text_lost} texte(s) non convertis en points — ils n'apparaîtront PAS "
+            "dans la broderie (installer Inkscape pour convertir le texte)"
+        )
+
     # Score pondéré avec valeurs brutes et seuils pour le debug
     details = {
         "threads": {
@@ -437,6 +538,7 @@ def _compute_quality_score(
             "message": t_msg,
             "weight": 18,
             "raw_value": thread_count,
+            "color_stops": color_stops,
             "thresholds": {
                 "ideal": ideal_threads,
                 "max_machine": max_threads,
@@ -486,33 +588,38 @@ def _compute_quality_score(
             "message": c_msg,
             "weight": 18,
             "raw_value": None,
+            "max_delta_e": round(c_max_delta_e, 1),
+            "notable_drift": c_notable_drift,
         },
         "coverage": {
             "score": cov_score,
             "message": cov_msg,
             "weight": 12,
             "raw_value": None,
+            "text_lost": text_lost,
         },
     }
 
     raw = sum(d["score"] * d["weight"] for d in details.values()) // 100
 
     # Gate critique : si un critère essentiel est effondré → cap à 40
-    # Pour les SVG directs (n_colors_requested is None), la fidélité couleurs dépend entièrement
-    # d'Ink/Stitch (hors de notre contrôle) — elle n'active pas la gate.
-    if n_colors_requested is None:
-        essential_min = s_score
-    else:
-        # cov_score n'active plus le gate : un logo monochrome uploadé avec n_colors=6 (défaut)
-        # vectorise légitimement 1 couleur → ratio 1/6 ne doit pas pénaliser brutalement.
-        # La couverture pèse quand même 12% dans le score pondéré.
-        essential_min = min(s_score, c_score)
+    # color_fidelity fait partie du gate pour tous les pipelines, y compris SVG direct :
+    # le snap vers la palette Brother (thread_color.snap_svg_colors_to_brother_palette)
+    # s'applique aussi bien aux SVG directs qu'aux sources raster — c'est bien sous notre
+    # contrôle, pas "hors de contrôle Ink/Stitch" comme le supposait l'ancienne exemption.
+    # cov_score n'active pas le gate : un logo monochrome uploadé avec n_colors=6 (défaut)
+    # vectorise légitimement 1 couleur → ratio 1/6 ne doit pas pénaliser brutalement.
+    # La couverture pèse quand même 12% dans le score pondéré.
+    essential_min = min(s_score, c_score)
     if essential_min < 20:
         total = min(raw, 40)
     elif essential_min < 40:
         total = min(raw, 65)
     else:
         total = raw
+
+    if text_lost > 0:
+        total = min(total, 65)
 
     gate_applied = total < raw
 
@@ -524,6 +631,15 @@ def _compute_quality_score(
         label, color = "Acceptable", "warning"
     else:
         label, color = "Problématique", "error"
+
+    # Un fil individuellement très décalé (ΔE ≥ 20) ne doit jamais se cacher derrière une
+    # étiquette "Excellent" — même si l'écart est physiquement irréductible (palette Brother
+    # incomplète), le label doit refléter honnêtement qu'un fil visible est décalé.
+    label_capped = False
+    if c_notable_drift and label == "Excellent":
+        label, color = "Bon", "warning"
+        label_capped = True
+    details["color_fidelity"]["label_capped"] = label_capped
 
     logger.debug(
         "quality_score_breakdown job=%s score=%d/%d label=%s gate=%s breakdown=%s",
@@ -698,9 +814,16 @@ def extract_pes_metadata(
             )
         color_changes = len(threadlist)
 
-        thread_colors = [
-            {"hex": f"#{t.color:06X}", "name": t.description or ""} for t in threadlist
-        ]
+        # Liste des fils à préparer : couleurs distinctes dans l'ordre de première
+        # apparition. Les répétitions z-order (même fil utilisé à plusieurs étapes)
+        # ne sont pas des fils supplémentaires — color_changes garde la séquence réelle.
+        seen_colors: set[int] = set()
+        thread_colors = []
+        for t in threadlist:
+            if t.color in seen_colors:
+                continue
+            seen_colors.add(t.color)
+            thread_colors.append({"hex": f"#{t.color:06X}", "name": t.description or ""})
 
         bounds = pattern.bounds()
         if bounds and len(bounds) == 4 and not math.isinf(bounds[0]):

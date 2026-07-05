@@ -73,11 +73,22 @@ source_svg_path   Vectorisation          Extraction SVG
 
 - `extract_vector_svg_from_pdf()` : pdftocairo `-svg -f 1 -l 1`
 - `is_vector_pdf_svg()` : détecte PDF vectoriel (≥5 paths, 0 images)
+- `normalize_svg_dimensions_to_mm()` : **pdftocairo émet `width`/`height` sans unité** (ex :
+  `width="225"`) — convention poppler : ce sont des points PDF (1/72 in), pas des pixels CSS.
+  Sans cette étape, `_parse_length_mm` (svg_utils.py) traitait la valeur comme des px (96 dpi),
+  faussant silencieusement la taille physique du design de ~25% dès que l'utilisateur ne fixait
+  pas de largeur cible explicite — et empêchait aussi le calcul de `suggested_width` côté
+  `AnalyzePDFView` (regex qui exigeait un suffixe `pt` jamais émis par poppler). Réécrit
+  `width`/`height` en mm explicites, viewBox inchangé.
 - `postprocess_vector_svg()` :
+  - Normalise les dimensions (`normalize_svg_dimensions_to_mm`, en premier)
   - Refuse les dégradés (`GradientNotSupportedError`)
   - Supprime les strokes parasites pdftocairo
   - Normalise `rgb(X%,Y%,Z%)` → `#RRGGBB`
   - Simplifie via Inkscape
+- **Depuis cette correction, le PDF vectoriel passe aussi par l'éditeur SVG**
+  (`AWAITING_SVG_VALIDATION`), au même titre que PNG/JPEG/WebP — auparavant il enchaînait
+  directement vers Ink/Stitch sans possibilité d'ajuster couleurs/densité.
 
 ### 3. Branche B — Raster (PNG/JPEG/WebP/PDF scanné)
 
@@ -122,20 +133,24 @@ source_svg_path   Vectorisation          Extraction SVG
 | 2 | `validate_svg_content()` | Vérifie éléments brodables (path/rect/circle...) avec fill ou stroke |
 | 3 | `remove_background_fill()` | Supprime fills blanc (L*>92) couvrant >85% viewBox. ⚠️ Seulement pour raster. |
 | 4 | `filter_micro_paths()` | Supprime paths < 0.5 mm² (bruit vectorisation) |
-| 5 | `reorder_svg_paths_for_minimal_jumps()` | Greedy nearest-neighbor sur centroids → minimise sauts |
-| 6 | `group_paths_by_color()` | Regroupe paths plats (VTracer) par couleur → moins de changements fil |
+| 5 | `reorder_svg_paths_for_minimal_jumps()` | Greedy NN **restreint aux runs consécutifs de même fill** (z-safe S10) — l'ordre inter-couleurs n'affecte pas les jumps (coupe de fil entre couleurs) |
+| 6 | `group_paths_by_color()` | Regroupe paths plats par couleur, **fusion z-safe** : blocs ordonnés par ordre document, fusion bloquée si chevauchement bbox inter-couleurs. Fusion libre si SVG marqué `data-stitchflow-disjoint="1"` (VTracer cutout) |
 | 7 | `scale_svg_to_width_mm()` | Redimensionne à target_width_mm (ratio conservé) |
 | 8 | `force_max_svg_colors(machine.max_threads)` | Fusionne itérativement couleurs Lab les plus proches → ≤N fils (profil machine, défaut 10) |
 | 9 | `snap_svg_colors_to_brother_palette()` | Snappe fill + stroke → fil Brother le plus proche (CIE Lab) |
 | 10 | `group_paths_by_color()` | Re-groupement après fusion couleurs |
 | 11 | `inject_inkstitch_params()` | Contours fins (<1mm de largeur bbox) → `inkstitch:stroke_method=running_stitch`. Ne touche jamais un attribut existant (choix éditeur préservés). |
-| 12 | `normalize_stroke_only_paths()` | Convertit paths stroke-only en fill. Skip les paths `inkstitch:stroke_method`. |
+| 12 | `normalize_stroke_only_paths()` | Petites formes fermées stroke-only (glyphes) → fill. Paths ouverts et grandes formes fermées (bbox ≥15% viewBox : anneaux, cadres) → laissés **intacts** (Ink/Stitch brode nativement les strokes en points courants ; les remplir créerait des disques pleins recouvrant le design — S12). Skip les paths `inkstitch:stroke_method`. |
 | 13 | `close_open_paths()` | Ferme chaque sous-path fill sans `Z` — un path fill non fermé est ignoré silencieusement par Ink/Stitch. Skip running_stitch/stroke-only et sous-path suivi d'un `m` relatif. |
 | 14 | `inject_inkstitch_namespace()` | Garantit `xmlns:inkstitch` sur le root (injection textuelle — ElementTree ne l'émet que si un attribut du namespace est sérialisé). |
 
 **Ordre critique :** `force_max_colors` AVANT `snap` (réduction d'abord, snap sur couleurs réduites = plus précis). `inject_inkstitch_params` AVANT `normalize_stroke_only_paths` (sinon plus de strokes à marquer). `close_open_paths` APRÈS (pour fermer aussi les fills issus de strokes convertis).
 
 **⚠️ Interdit — `inkstitch:fill_method="auto_fill"`** : mesuré S9 en A/B contrôlé, 5 annotations font passer Ink/Stitch de 5.7s à timeout 300s. Le remplissage par défaut d'Ink/Stitch est correct ; `prepare_svg_for_inkstitch` purge désormais les annotations héritées (`_strip_fill_method_annotations`).
+
+**⚠️ Interdit — `inkstitch:stroke_method="running_stitch"` sur les contours décoratifs** : mesuré S12 en A/B contrôlé (écusson EAGLES), 2 annotations sur des anneaux fermés font passer Ink/Stitch de 11s à timeout 300s — même famille de bug que `fill_method` S9. Les strokes nus sont brodés nativement en points courants : ne rien annoter. (`inject_inkstitch_params` continue d'annoter uniquement les contours <1mm, cas jamais observé en timeout.)
+
+**⚠️ Z-order de broderie (S10)** : l'ordre des paths SVG = ordre de superposition des couches de fil. Ne jamais réordonner des paths de fills différents qui se chevauchent (le fond serait brodé par-dessus le design — PES illisible mais score « Excellent », le scoring ne le voit pas). VTracer est en `hierarchical=cutout` (formes disjointes, marquées `data-stitchflow-disjoint="1"` par `png_processing`) ; les SVG directs passent par la fusion z-safe avec garde bbox.
 
 **Profil machine** : `_resolve_machine_params(job)` dans `tasks.py` — profil du user (`UserProfile.machine_params()`, get_or_create lazy) ou défauts PR1050X pour les jobs anonymes. Propagé à `force_max_svg_colors`, `extract_pes_metadata(machine=...)` (seuils fils + dimensions du scoring) et à l'export multi-format.
 
@@ -145,7 +160,13 @@ source_svg_path   Vectorisation          Extraction SVG
 
 Deux sous-étapes exécutées systématiquement :
 
-**A — Inkscape CLI** (si Inkscape disponible, timeout 60s) :
+**A — Inkscape CLI** (si Inkscape disponible, timeout 60s). Résolution de l'exécutable
+via `find_inkscape()` (S12) : `INKSCAPE_EXECUTABLE` (.env) → PATH → emplacements usuels
+(`C:\Program Files\Inkscape\bin\`, `/Applications/Inkscape.app/`). Sans cette résolution,
+Inkscape installé hors PATH (cas Windows standard) faisait sauter silencieusement l'étape
+→ les `<text>` n'étaient jamais convertis en paths → **texte absent du PES** sans erreur.
+`prepare_svg_for_inkstitch` retourne aussi `text_remaining` (nb de `<text>` non convertis) ;
+le scoring plafonne à 65 et affiche un avertissement si > 0.
 ```
 select-all;object-to-path      → textes, formes géométriques → paths
 select-all;clone-unlink         → <use> et clones → éléments standalone
@@ -185,6 +206,14 @@ Si `machine_format != PES` : `pyembroidery.read(pes)` → `pyembroidery.write(pa
   - Filtre les COLOR_BREAK « White » PES v1 avant de compter les fils
   - Score 0-100 sur 7 critères (voir § Scoring)
 
+### 6b. Suivi de progression et estimation de temps
+
+**Fichiers :** `conversions/tasks.py` (`_set_progress`), `conversions/services/estimation.py`
+
+- `ConversionJob.progress_pct` (0-100) et `progress_step` (libellé humain) sont mis à jour à chaque étape majeure de `_run_svg_to_pes_pipeline()` et de la phase de vectorisation raster dans `process_conversion_job()` via `_set_progress(job, pct, step)`. Le partial HTMX `conversion_status.html` affiche une barre de progression réelle (pas une animation indéterminée) pilotée par ce champ, avec polling toutes les 1s.
+- `ConversionJob.duration_seconds` est calculé (`time.monotonic()` capturé au début de la tâche Celery) et sauvegardé à la complétion. Sert de base à `estimate_duration_seconds()` (`services/estimation.py`) : moyenne des 20 dernières conversions complétées du même `source_format` si ≥ 5 échantillons existent, sinon repli sur une heuristique statique (format + `n_colors` + `remove_background`).
+- Des logs `logger.debug('[timing] ...')` mesurent la durée de chaque étape du pipeline (Inkscape prep, tri/regroupement couleurs, fusion+snap Brother, Ink/Stitch CLI) — utile pour objectiver un futur goulot d'étranglement, pas exploité automatiquement.
+
 ---
 
 ## Score qualité broderie
@@ -203,8 +232,13 @@ Si `machine_format != PES` : `pyembroidery.read(pes)` → `pyembroidery.write(pa
 
 ### Gate critique
 
-- Si min(stitches_score, fidelity_score, coverage_score) < 20 → score capé à 40
+- Si min(stitches_score, fidelity_score) < 20 → score capé à 40
 - Si min(...) < 40 → score capé à 65
+- **Depuis S11 : `fidelity_score` (color_fidelity) fait partie du gate pour TOUS les pipelines**,
+  y compris SVG direct (`n_colors_requested is None`). Avant S11, une exemption dispensait les
+  SVG directs de ce gate au motif que « la fidélité couleurs dépend d'Ink/Stitch » — faux, le
+  snap Brother (`thread_color.snap_svg_colors_to_brother_palette`) s'applique identiquement aux
+  deux pipelines.
 
 ### Labels
 
@@ -214,6 +248,42 @@ Si `machine_format != PES` : `pyembroidery.read(pes)` → `pyembroidery.write(pa
 | ≥70 | Bon | info |
 | ≥50 | Acceptable | warning |
 | <50 | Problématique | error |
+
+**Plafonnement du label par écart de couleur individuel (S11)** : le score pondéré peut rester
+"Excellent" même quand UN SEUL fil dérive fortement, car `color_fidelity` ne pèse que 18% et sa
+valeur repose sur une **moyenne** des écarts ΔE (Lab) par couleur — un fil très décalé peut être
+noyé dans la moyenne si les autres couleurs sont fidèles. Pour éviter qu'un design avec un fil
+visiblement faux affiche "Excellent", `_score_color_fidelity()` calcule aussi `max_dist` (pire ΔE
+individuel) ; si `max_dist >= 20` (seuil `NOTABLE_DELTA_E_THRESHOLD` dans `thread_color.py`) et
+que le label calculé serait "Excellent", il est rétrogradé à "Bon" (`label_capped=True` dans
+`quality_details.color_fidelity`). **Le score numérique n'est pas modifié par cette règle** —
+seul le label et un flag `notable_drift` sont ajoutés, donc aucun impact sur le benchmark
+(score moyen identique avant/après S11 : 95.0/100).
+
+**Origine réelle du ΔE résiduel (diagnostic S11)** : même après notre snap vers la palette
+Brother complète (`InkStitch Brother Embroidery.gpl`), le thread final dans le PES peut différer
+de la couleur snappée — confirmé empiriquement sur T01 : SVG snappé vers `#134a76` mais PES final
+contient le fil `Ultramarine #0b3d91`. Cause probable : **le format PES v1 n'encode qu'un jeu
+limité de couleurs de fil (table interne Ink/Stitch)**, donc un fil Brother légitime absent de
+cette table v1 est lui-même re-mappé par Ink/Stitch au moment de l'écriture — un second snap,
+hors de notre contrôle, qui peut réintroduire un écart même quand notre propre snap était optimal.
+C'est un phénomène dépendant du contenu (formes simples parfois préservées exactement, cf. tests
+manuels S11 non concluants pour créer une fixture synthétique fiable) — d'où le choix de ne pas
+ajouter de fixture dédiée mais de garder les tests existants (T01, T03, T09, T11, T14, qui
+présentent déjà un ΔE max ≥20 réel) comme garde-fous génériques via le nouveau contrôle
+`color_fidelity_regression` dans `tests/run_benchmark.py` (alerte si un test affiche "Excellent"
+malgré `notable_drift=True`).
+
+### Badge UI d'écart de couleur
+
+- **Éditeur SVG** (`templates/conversions/partials/svg_editor.html`) : badge `⚠ écart couleur (ΔE
+  N)` à côté de chaque fil dont `hex|delta_e:brother_hex >= 20` (filtre Django
+  `conversions/templatetags/thread_fidelity.py`, calcul direct sur les hex déjà présents dans le
+  contexte — pas de nouvelle donnée à faire remonter depuis les vues).
+- **Page résultat** (`partials/conversion_status.html`) : badge `⚠ écart couleur notable` dans le
+  détail du critère "Fidélité couleurs" quand `quality_details.color_fidelity.notable_drift` est
+  vrai.
+- Ces badges sont **informatifs uniquement** — aucun blocage du téléchargement.
 
 ---
 
@@ -271,11 +341,12 @@ Si absent → snap désactivé silencieusement (log WARNING).
 | `conversions/tasks.py` | Orchestrateur Celery (pipeline complet) |
 | `conversions/services/png_processing.py` | Vectorisation raster → SVG |
 | `conversions/services/svg_utils.py` | Post-traitement SVG (filtrage, reorder, fusion, stroke-fix) |
-| `conversions/services/thread_color.py` | Snap couleurs → palette Brother |
+| `conversions/services/thread_color.py` | Snap couleurs → palette Brother + seuils ΔE écart notable |
 | `conversions/services/previews.py` | Preview PNG + score qualité |
 | `conversions/services/inkstitch.py` | Intégration CLI Ink/Stitch |
 | `conversions/services/pdf_processing.py` | Extraction PDF vectoriel |
 | `conversions/services/validation.py` | Validation structure SVG |
+| `conversions/templatetags/thread_fidelity.py` | Filtre template `delta_e` (badge écart couleur éditeur SVG) |
 
 ---
 

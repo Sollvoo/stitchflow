@@ -2,9 +2,46 @@
 
 ## [LIRE EN PREMIER — CONTEXTE RAPIDE POUR L'IA]
 
-**Score actuel (S7) :** 95.7/100 sur 20 tests (2026-06-20)
-**Score S8 :** session infrastructure/bugs — benchmark à relancer pour mesurer l'impact des fixes S8
-**Objectif :** 95.0/100 sur les tests de référence (**ATTEINT Session 6, maintenu S7**)
+**Score actuel (S12, Windows env complet) :** 95.4/100 sur 24 tests (2026-07-05).
+**Référence macOS (S7) :** 95.7/100 sur 20 tests (2026-06-20)
+**Objectif :** 95.0/100 sur les tests de référence (**ATTEINT Session 6, maintenu S7/S10/S11/S12**)
+
+**⚠️ Découverte majeure S12-A — cache Ink/Stitch corrompu = échec silencieux total :** le cache
+diskcache SQLite (`%LOCALAPPDATA%\inkstitch\inkstitch\cache\stitch_plan\`) peut se corrompre
+(processus zombie + WAL verrouillé) → Ink/Stitch sort en exit 0 avec un ZIP vide, TOUTES les
+conversions échouent avec « aucune sortie ». `convert_svg_to_pes` purge et retente automatiquement
+depuis S12. Si benchmark 100% en erreur → vérifier ce cache en premier.
+
+**⚠️ Découverte majeure S12-B — Inkscape hors PATH = texte perdu sans erreur :** sur Windows,
+Inkscape s'installe dans `C:\Program Files\Inkscape\` sans entrer dans le PATH → l'étape
+object-to-path était silencieusement sautée depuis toujours → les `<text>` SVG n'étaient JAMAIS
+brodés (PES amputé, score 100/100 quand même). `find_inkscape()` (svg_utils) résout maintenant
+.env → PATH → emplacements usuels ; le scoring plafonne à 65 si des `<text>` restent non convertis.
+
+**⚠️ Découverte majeure S12-C — stroke→fill détruit les contours décoratifs :** avec Inkscape
+actif, cercles/lignes deviennent des paths stroke-only ; l'ancienne conversion systématique
+stroke→fill (S8) les remplissait en disques pleins recouvrant le design. Les strokes nus sont
+brodés nativement en points courants par Ink/Stitch — `normalize_stroke_only_paths` ne convertit
+plus que les petites formes fermées (<15% du viewBox, glyphes). **Ne jamais annoter ces paths
+`stroke_method=running_stitch`** : mesuré A/B, 2 annotations = timeout 300s (famille du bug S9).
+
+**⚠️ Découverte majeure S11 — le label peut mentir même quand le score ne bouge pas :** un design
+multicolore avec UN SEUL fil très décalé (ΔE Lab ≥20) peut afficher "Excellent" car
+`color_fidelity` (i) ne pèse que 18% du score pondéré et (ii) était calculé sur une **moyenne**
+des écarts par couleur — un fil très décalé se noie dans la moyenne si les autres sont fidèles.
+Corrigé S11 : `_score_color_fidelity()` calcule aussi `max_dist` (pire ΔE individuel) ; si
+`max_dist >= 20` le label est plafonné à "Bon" même si le score numérique reste ≥85
+(`label_capped=True`, score numérique inchangé — zéro impact benchmark). Gate critique corrigé en
+prime : `color_fidelity` participe désormais au gate pour **tous** les pipelines (l'exemption
+SVG-direct reposait sur un raisonnement faux — le snap Brother s'applique identiquement aux SVG
+directs et aux sources raster).
+
+**⚠️ Découverte majeure S10 — z-order de broderie :** l'ordre des paths SVG = ordre de
+superposition visuelle. VTracer était en `hierarchical=stacked` et `reorder`/`group_paths_by_color`
+réordonnaient via greedy NN → **le fond était brodé par-dessus le design** (invisible au scoring,
+qui notait 92-97 des PES visuellement détruits). Corrigé S10 : VTracer en `cutout` (formes
+disjointes, marquées `data-stitchflow-disjoint="1"`) + réordonnancement z-safe pour SVG directs.
+**Toujours vérifier l'aperçu PES visuellement en plus du score.**
 
 **Tests anti-régression :**
 - T01 : ne pas descendre sous 86/100 (actuellement 92)
@@ -32,9 +69,15 @@ Notes critiques :
 - `INK_STITCH` — problème conversion Ink/Stitch (PES vide, timeout)
 - `SCORING` — problème calibration score (score ne reflète pas qualité réelle)
 
-**Baseline Windows (S9)** : la machine de dev Windows n'a ni palette Brother (`snap désactivé`), ni rembg, ni poppler (T12 impossible). Les scores y sont systématiquement plus bas que la référence macOS S7 : T08=94 (vs 100), moyenne 92.7 (vs 95.7). **Comparer les runs Windows entre eux, pas à la référence macOS.**
+**Baseline Windows (S10, env complet)** : palette Brother **retrouvée** (fix chemin S10) et
+poppler vendor **branché** (fix pdf2image S10) → T08=100, moyenne 94.8/100 sur les 20 tests
+historiques (~= référence macOS). Restent absents : rembg/onnxruntime (fallback seuillage,
+T01/T05/T19 OK quand même) et **potrace** (T12 plafonne à 79 via fallback VTracer — installer
+potrace Windows pour retrouver ~95). Les runs Windows sont désormais comparables à macOS à
+~1 pt près.
 
 **Ce qui a été tenté et n'a PAS fonctionné (ne pas retenter) :**
+- **S12 : `inkstitch:stroke_method="running_stitch"` sur les contours décoratifs → INTERDIT.** A/B contrôlé (écusson EAGLES) : 2 annotations sur des anneaux fermés = 11s → timeout 300s. Laisser les strokes nus, Ink/Stitch les brode nativement.
 - **S9 : `inkstitch:fill_method="auto_fill"` sur les paths fill → INTERDIT.** Mesuré A/B contrôlé : 5 annotations font passer Ink/Stitch de 5.7s à timeout 300s (T02). L'annotation systématique `_annotate_fill_paths_for_inkstitch` (commit « forcer tatami fill ») a été supprimée et remplacée par `_strip_fill_method_annotations` qui purge les annotations héritées des SVG stockés. Les zones ignorées par Ink/Stitch venaient des paths non fermés (→ `close_open_paths`) et des strokes-only (→ `normalize_stroke_only_paths`), pas du fill method.
 - S2 Iter 3 : `filter_speckle=2` / `color_precision=7` pour T02 coverage → neutre, 5ème couleur fondamentalement ambiguë dans le PNG source
 - Coefficient color_fidelity 1.5 → ne pas tenter, durcirait les scores sans améliorer la qualité réelle
@@ -42,17 +85,22 @@ Notes critiques :
 - S5 Iter 2 : `corner_threshold` adaptatif VTracer → neutre sur les scores benchmark, conservé pour la logique
 - S7 : Fix thread_color.py pour T01 ΔLab=28.4 → IMPOSSIBLE. Lacune physique palette Brother (Pewter L≈34 → Warm Gray L≈82).
 
-**Prochaines priorités (Session 10 — audit calibration OBLIGATOIRE, reporté de S9) :**
-1. **[SCORING]** Audit calibration complet (multiple de 3 dépassé — S9 était une session features 8e/13a/13b)
-2. **[SCORING]** **T03** (écusson 12 col, 9 fils) : `force_max_svg_colors(8)` si n_colors≥10 → t_score 80→100 potentiel
-3. **[VECT]** Mesurer l'impact des fixes S8 (preprocessing texte, stroke thin → fill) sur T04/T13 en environnement complet (palette Brother + rembg)
+**Prochaines priorités (Session 13) :**
+1. **[SCORING]** **Critère de fidélité visuelle** : le score ne détecte toujours pas un design recouvert/détruit (S10/S12 : PES illisibles notés 92-100 — S12 l'a reprouvé avec les disques pleins scorés 100). Piste : comparaison aperçu PES vs rendu SVG source (SSIM ou histogramme par zones).
+2. **[VECT]** Installer potrace Windows (T12 79→~95 attendu) ; évaluer rembg/onnxruntime
+3. **[SCORING]** Audit calibration complet des 7 critères (reporté depuis S9 — S12 a fait un audit ciblé : designs contours, density-aware niveau 3, fils distincts vs arrêts)
+4. **[SCORING]** **T03** (écusson 12 col) : `force_max_svg_colors(8)` si n_colors≥10 → t_score 80→100 potentiel
+5. **[SCORING]** **Quantification PES v1** (découverte S11) : Ink/Stitch re-mappe parfois le fil final vers sa propre table de couleurs PES v1 limitée, même après notre snap Brother optimal (ex: T01 snappé `#134a76` → PES final `Ultramarine #0b3d91`). Phénomène dépendant du contenu (formes simples parfois préservées exactement), hors de notre contrôle direct — mais pourrait justifier d'exposer ce ΔE final (déjà mesuré) plus tôt dans le flux utilisateur (avant même la génération du PES) si un moyen d'interroger la table PES v1 d'Ink/Stitch est trouvé.
 
 *(S9 fait : namespace inkstitch ✅, remove_background_fill coins arrondis ✅, close_open_paths ✅, découverte interdit fill_method — voir Session 9)*
+*(S10 fait : palette Brother Windows ✅, poppler pdf2image ✅, VTracer cutout ✅, réordonnancement z-safe ✅, T21/T22 ✅ — voir Session 10)*
+*(S11 fait : seuils ΔE partagés (thread_color.py) ✅, label capping color_fidelity ✅, gate corrigé (SVG direct inclus) ✅, badges UI (éditeur + page résultat) ✅, garde-fou générique `color_fidelity_regression` dans le benchmark ✅ — voir Session 11)*
+*(S12 fait : auto-guérison cache Ink/Stitch ✅, find_inkscape (texte→paths enfin actif Windows) ✅, garde-fou texte perdu ✅, fils distincts vs arrêts ✅, normalize_stroke_only géométrie-aware ✅, calibration contours + density-aware n3 ✅, T23/T24 ✅ — voir Session 12)*
 
 **Audit calibration scoring :**
 - Dernière révision : Session 4 (2026-06-17) — 6/7 critères fiables
-- S7 : coverage floor relevé 55→65 (calibration ciblée, pas audit complet)
-- Prochaine révision obligatoire : **Session 9** (multiple de 3)
+- S7 : coverage floor relevé 55→65 ; S12 : audit ciblé (contours, density-aware n3, fils distincts)
+- Prochaine révision complète obligatoire : **Session 15** (multiple de 3)
 
 ---
 
@@ -69,6 +117,9 @@ Notes critiques :
 | 7 | 2026-06-20 | 95.1 | **95.7** | **+0.6** | 20 |
 | 8 | 2026-06-29 | 95.7 | à mesurer | — | 20 |
 | 9 | 2026-07-03 | — | 92.7 (baseline Windows, 19 tests) | n/c | 19 |
+| 10 | 2026-07-04 | 92.7 (Windows, 19 tests) | **95.0** (Windows env complet, 22 tests) | **+2.3** | 22 |
+| 11 | 2026-07-04 | 95.0 (22 tests) | **95.0** (score numérique identique, 5 labels rétrogradés Excellent→Bon) | **0.0** | 22 |
+| 12 | 2026-07-05 | 95.0 (22 tests — après réparation env 0/22) | **95.4** (24 tests, T23/T24 ajoutés ; 22 comparables : 95.4) | **+0.4** | 24 |
 
 Note S8 : session infrastructure — bug VTracer Python API corrigé (TypeError out_path), réorganisation tests par difficulté (niveau1/2/3/impossible), amélioration preprocessing texte PNG (SMOOTH supprimé pour détails fins), stroke-only thin paths convertis en fill (fix preview vide texte contours). Relancer le benchmark pour mesurer l'impact.
 
@@ -244,12 +295,15 @@ Note S7 : le delta +0.6 intègre 2 calibrations scoring (coverage floor 55→65,
 
 ## Problèmes connus non résolus
 
+- **[SCORING] Score aveugle au rendu visuel** (découvert S10) : un PES dont le fond recouvre le design scorait 92-97. Corrigé en amont (cutout + z-safe) mais le scoring lui-même ne le détecterait toujours pas → critère de fidélité visuelle à concevoir S11.
+- **T12=79 sur Windows** : potrace absent → fallback VTracer sur un scan (macOS avec potrace : 95). Installer potrace Windows.
 - **T01 color_fidelity=70** (floor appliqué S5, vrai ΔLab=28.4) : **DÉFINITIF S7 — non résolvable.** Le parsing GPL est correct. La lacune est physique : palette Brother passe de Pewter (L≈34) à Warm Gray (L≈82) sans fil gris intermédiaire. Tout logo vectorisé en gris moyen score 70 au plafond.
 - **T02 coverage 4/5** : la 5ème couleur est fondamentalement similaire à une autre dans l'image PNG source. filter_speckle=2 et color_precision=7 (S2) n'ont pas résolu le problème. Potentiellement non résoluble.
 - **T04 coverage=65** (1/4, floor relevé S7) : PNG texte blanc sur fond coloré, le texte blanc est filtré → 1 couleur correcte. Limite du contenu source.
 - **T07 coverage=65** (2/5, floor relevé S7) : logo fondamentalement 2 couleurs. Non résolvable par pipeline.
 - **T05 jumps** : 2.1% → j_score=65. Plafond naturel photo complexe. TSP interdit (effort élevé, ceiling naturel).
 - **T14 threads=80** (8 fils) + **color_fidelity=80** (7/8 fils, ΔLab=11.2) : un fil disparaît probablement via snap→group_colors sur ce PDF vectoriel complexe. À diagnostiquer S9.
+- **[SCORING] Quantification PES v1 (découvert S11)** : Ink/Stitch peut re-mapper le fil final vers sa propre table de couleurs PES v1 (limitée), même après un snap Brother déjà optimal de notre côté (ex: T01 snappé `#134a76` → PES final `Ultramarine #0b3d91`, ΔE réel 28.4). Dépendant du contenu (formes simples parfois préservées exactement) — non reproductible à la demande, donc pas de fixture synthétique dédiée possible. Notre label capping (S11) rend cet écart visible sans prétendre le corriger (limite hors de notre contrôle direct).
 
 ### Session 8 — 2026-06-29
 
@@ -305,6 +359,180 @@ Note S7 : le delta +0.6 intègre 2 calibrations scoring (coverage floor 55→65,
 
 ---
 
+### Session 10 — 2026-07-04 (Windows)
+
+**Contexte** : 5 conversions signalées par l'utilisateur (fichiers dans `tests/niveau2/logo/`) :
+fond brodé par-dessus le design, texte détruit, couleurs fausses. Diagnostic par reproduction
+pipeline + aperçus PES + A/B contrôlé stacked/cutout.
+
+**Étapes ciblées : ENV + VECT + SVG_PREP**
+
+**Iter 0 — [ENV] palette Brother Windows + poppler pdf2image** (`thread_color.py`, `png_processing.py`)
+- `_find_brother_palette` : ajout du candidat `exe_path.parent.parent / "palettes"` (layout Windows `inkstitch\bin\inkstitch.exe` → `inkstitch\palettes`). La palette existait, seul le chemin relatif manquait.
+- `convert_pdf_to_png` : passage de `poppler_path=settings.POPPLER_BIN_PATH` à pdf2image (le mécanisme existait déjà pour pdftocairo).
+- Impact mesuré : **92.7 → 94.8/100** (T08 94→100, T02 92→97, T12 erreur→79, quasi tous les tests +1 à +5 via color_fidelity réelle). Corrige aussi les couleurs fausses dans les PES produits (cas tampon : 6 fils fantaisistes → 2 fils Rouge/Blanc).
+
+**Iter 1 — [VECT] VTracer `hierarchical=stacked` → `cutout`** (`_vtracer_helper.py`, `png_processing.py`)
+- Cause racine du « fond brodé par-dessus » : stacked produit des formes empilées (ordre document = z-order), que `reorder`/`group_paths_by_color` (greedy NN depuis (0,0)) réordonnaient librement → le fond (plus gros bloc) partait en dernier et recouvrait le design. A/B contrôlé : icône avec fond violet → cercle blanc invisible en stacked, design parfait en cutout.
+- cutout = formes disjointes (trous découpés) → aucun ordre de broderie ne peut recouvrir le design + moins de couches de fil superposées.
+- Impact mesuré : benchmark stable 94.8 (identique — le scoring est aveugle au z-order), **gain visuel majeur** sur les 4 cas raster signalés (aperçus PES : designs reconnaissables, textes lisibles).
+
+**Iter 2 — [SVG_PREP] réordonnancement z-safe** (`svg_utils.py`, `png_processing.py`)
+- `reorder_svg_paths_for_minimal_jumps` : greedy NN restreint aux runs consécutifs de même fill (l'ordre inter-couleurs n'affecte pas les jumps — une coupe de fil sépare les couleurs de toute façon).
+- `group_paths_by_color` : fusion z-safe — un path ne rejoint un bloc antérieur de sa couleur que si sa bbox ne chevauche aucun path d'une autre couleur qu'il enjamberait ; blocs ordonnés par ordre document (fond en premier) ; NN intra-bloc conservé.
+- Marqueur `data-stitchflow-disjoint="1"` posé par `png_processing` sur les SVG VTracer cutout → fusion libre sans garde (sinon la garde bbox éclatait T05 en 108 blocs, T03 84).
+- Impact mesuré : 94.8 stable, zéro régression ; cas `test-logo.svg` (SVG direct pleine page) : fond bleu brodé en premier, textes « LOGO / PDF Test Design / SAMPLE / 2026 » lisibles (avant : tatami bleu opaque sur tout).
+
+**Iter 3 — Ajout T21/T22 au benchmark** (`tests/run_benchmark.py`)
+- T21 : `niveau2/logo/icone-app-arrondie.png` (n=3, 80mm) → **97/100** (verrou z-order raster)
+- T22 : `niveau2/logo/logo-retro-4couleurs.png` (n=4, 80mm) → **97/100** (verrou z-order + texte fin)
+- Score moyen 22 tests : **95.0/100**
+
+**Leçon S10 (à ne pas oublier)** : le score peut être excellent sur un PES visuellement détruit.
+Toute modification de l'ordre des paths doit être z-safe. Ne jamais réintroduire un greedy NN
+inter-couleurs sur des formes non disjointes.
+
+---
+
+### Session 12 — 2026-07-05 (Windows)
+
+**Contexte** : 5 conversions signalées par l'utilisateur : texte « MAISON »/« EAGLES » totalement
+absent des PES (scores 100 et 98 !), doublons de fils (Khaki ×3, Brass ×2), design contours noté 65.
+
+**Étapes ciblées : ENV + SVG_PREP + SCORING (audit ciblé)**
+
+**Iter 0 — [ENV] Cache Ink/Stitch corrompu + auto-guérison** (`inkstitch.py`)
+- Découverte : le cache diskcache SQLite d'Ink/Stitch (`%LOCALAPPDATA%\inkstitch\inkstitch\cache\stitch_plan\`)
+  peut se corrompre (`sqlite3.DatabaseError: database disk image is malformed`) → **TOUTES les conversions
+  échouent silencieusement** (exit 0, ZIP vide) : benchmark 22/22 en erreur. Un processus inkstitch zombie
+  verrouillait les fichiers WAL.
+- Fix : purge manuelle + `convert_svg_to_pes()` détecte le marqueur dans stderr, purge le cache et retente
+  une fois automatiquement.
+- Impact : benchmark 0/22 → 95.0/100 (22/22, baseline S12 = S11).
+
+**Iter 1 — [SVG_PREP] `find_inkscape()` : Inkscape hors PATH = texte perdu** (`svg_utils.py`)
+- Cause racine des textes absents : Inkscape installé (`C:\Program Files\Inkscape\`) mais hors PATH →
+  `shutil.which` → None → `prepare_svg_for_inkstitch` sautait silencieusement object-to-path → les `<text>`
+  restaient tels quels → **Ink/Stitch les ignore sans erreur**.
+- Fix : résolution `INKSCAPE_EXECUTABLE` (.env) → PATH → emplacements usuels Windows/macOS, cache module.
+- Impact : logo-typographique 100/100 avec texte réellement brodé (20 347 pts vs 18 412 sans texte),
+  écusson EAGLES 93→98 avec texte + fil blanc récupérés.
+
+**Iter 2 — [SCORING] Garde-fou texte non brodable** (`svg_utils.py` + `previews.py`)
+- `prepare_svg_for_inkstitch` retourne `text_remaining` ; `count_unconverted_text_elements()` réutilisé par
+  le scoring : si des `<text>` avec contenu subsistent dans le SVG final → coverage cap 40, **score total
+  cap 65**, message explicite. Plus jamais de 100/100 sur un design amputé de son texte.
+
+**Iter 3 — [SCORING] Fils distincts vs arrêts de couleur** (`previews.py`)
+- `thread_count` = couleurs distinctes (aiguilles réellement mobilisées), `color_stops` = séquence réelle.
+  Liste « Fils nécessaires » dédupliquée (plus de « Brass ×2 », « Khaki ×3 ») ; template affiche
+  `thread_colors|length`.
+- Impact : mandala 82→91 (12 arrêts = 9 fils distincts, sort du « dépasse les 10 fils »).
+
+**Iter 4 — [SVG_PREP] normalize_stroke_only_paths géométrie-aware** (`svg_utils.py`)
+- **DÉCOUVERTE MAJEURE 1** : avec Inkscape actif, les `<circle>`/`<line>` deviennent des `<path>`
+  stroke-only → la conversion systématique stroke→fill (fix S8) remplissait les cercles décoratifs en
+  **disques pleins recouvrant le design** (mandala détruit sous un aplat khaki, contour-only → 3 disques).
+- **DÉCOUVERTE MAJEURE 2 (A/B contrôlé)** : annoter ces paths `inkstitch:stroke_method="running_stitch"`
+  fait passer Ink/Stitch de 11s à **timeout 300s** (même famille que fill_method S9). Les strokes NUS sont
+  brodés nativement en points courants par Ink/Stitch — la prémisse S8 « Ink/Stitch ignore les paths sans
+  fill » est fausse dans le cas général.
+- Fix : paths ouverts ou formes fermées avec bbox ≥15% du viewBox → laissés intacts ; seules les petites
+  formes fermées (glyphes) restent converties en fill (cas S8 préservé).
+- Impact : mandala et contour-only visuellement corrects, écusson 11s sans timeout.
+
+**Iter 5 — [SCORING] Audit ciblé : designs contours + density-aware niveau 3** (`previews.py`)
+- `_extract_svg_colors` lit aussi les strokes (fix « Couleurs SVG non lisibles » → fidélité mesurable).
+- `_is_contour_only_design()` : design 100% contours → s_score/dens_score plancher 90 (un contour propre
+  produit naturellement peu de points et une densité quasi nulle — c'est le résultat correct).
+- Density-aware niveau 3 : 500-1200 pts avec densité optimale (0.5-20) → s_score 90 (petit design sain).
+- Impact : contour-only 65→93 ; T13 90→96 ; T10 92→97 attendu.
+
+**Iter 6 — [SVG_PREP] `find_inkscape()` propagé** (`png_processing.py`, `pdf_processing.py`)
+- Les 3 `shutil.which("inkscape")` restants (fallback vectorisation, simplify nœuds) utilisent le helper.
+- Benchmark aligné sur la prod : `_apply_svg_postprocess` appelle désormais `prepare_svg_for_inkstitch`
+  (comme tasks.py) — l'étape Inkscape est enfin exercée par les tests.
+
+**Ajout T23/T24 au benchmark** (`tests/run_benchmark.py`)
+- T23 : `niveau3/texte/logo-typographique-complexe.svg` (SVG `<text>`, 120mm, Hard) — verrou texte→paths
+- T24 : `niveau2/geometrique/mandala-6branches.svg` (176mm, Medium) — verrou fils distincts + strokes intacts
+
+**Résultat final S12** : **95.4/100 (24/24)** — T10 95→98, T13 90→96, T23=100, T24=91 ;
+T01=92 et T08=100 stables ; aucune régression ; 75 tests unitaires OK.
+Cas utilisateur : logo-typographique 100 (texte brodé), écusson EAGLES 98 (texte + blanc récupérés),
+mandala 82→91 (fils dédupliqués, anneaux intacts), contour-only 65→93 (calibration contours).
+
+---
+
+### Session 11 — 2026-07-04 (Windows)
+
+**Contexte** : signalement utilisatrice — icône app bleu/violet 3 couleurs convertie avec un fil
+"Purple" nettement plus violet que la source, score qualité 97/100 "Excellent" sans aucun signal.
+
+**Diagnostic** :
+1. `snap_svg_colors_to_brother_palette()` (`thread_color.py`) fait un `min()` ΔE Lab sans seuil —
+   comportement correct en soi (aucune tolérance à appliquer, le fil le plus proche EST le bon
+   choix quand la palette n'a rien de mieux). Le vrai problème : aucun signal quand l'écart choisi
+   est important.
+2. `color_fidelity` ne pèse que 18% du score pondéré, calculé sur une **moyenne** des écarts ΔE
+   par couleur — un fil très décalé se noie dans la moyenne si les autres couleurs sont fidèles
+   (ex: 1 fil à ΔE=22 + 2 fils parfaits → moyenne ΔE≈11 → score dilué ≈87, jamais signalé).
+3. Gate critique (`previews.py`) exemptait `color_fidelity` du plafonnement pour les pipelines SVG
+   direct au motif que "la fidélité dépend d'Ink/Stitch, hors de contrôle" — argument faux : le
+   snap Brother s'applique identiquement aux SVG directs et aux sources raster.
+4. Aucun badge visuel nulle part dans l'UI pour signaler un fil visiblement décalé.
+
+**Iter 1 — Seuils ΔE partagés** (`thread_color.py`)
+- `NOTABLE_DELTA_E_THRESHOLD = 20.0`, `LIGHT_DELTA_E_THRESHOLD = 10.0` (repères CIE76 usuels :
+  <10 non perceptible en usage courant, 10-20 visible mais tolérable, ≥20 écart net) — calibrés
+  avec l'utilisatrice.
+- `classify_color_drift()` et `hex_delta_e()` : helpers publics réutilisés par `previews.py` et le
+  filtre template. `get_snap_preview()` enrichi avec `delta_e`/`notable_drift` par couleur.
+- Impact benchmark : nul (pas encore branché dans le scoring).
+
+**Iter 2 — Label capping + gate corrigé** (`previews.py`)
+- `_score_color_fidelity()` calcule désormais `max_dist` (pire ΔE individuel) en plus de
+  `mean_dist`, retourné et stocké dans `details["color_fidelity"]["max_delta_e"]` +
+  `notable_drift`.
+- Gate critique : suppression de l'exemption SVG direct — `essential_min = min(s_score, c_score)`
+  dans tous les cas.
+- **Label capping** : si `notable_drift` (max_dist≥20) et label calculé = "Excellent" → rétrogradé
+  à "Bon"/`warning` (`label_capped=True`). **Le score numérique n'est pas modifié**, uniquement le
+  label — donc zéro impact sur le score moyen benchmark.
+- Impact mesuré : score moyen inchangé 95.0/100 (22/22). T01=92 (Bon, était Excellent), T03=94
+  (Bon), T09=95 (Bon), T11=94 (Bon), T14=91 (Bon) — tous avec un ΔE max réel ≥20 déjà présent mais
+  jusqu'ici invisible. T08 stable 100 (Excellent, aucun écart couleur).
+
+**Iter 3 — Badges UI** (`conversions/templatetags/thread_fidelity.py` nouveau,
+`svg_editor.html`, `conversion_status.html`)
+- Filtre Django `delta_e` (nouveau module `templatetags/`) calculant le ΔE directement à partir de
+  `color.hex`/`color.brother_hex` déjà présents dans le contexte de l'éditeur SVG — aucune
+  modification de `views.py` nécessaire.
+- Badge `⚠ écart couleur (ΔE N)` par fil dans l'éditeur SVG si ΔE≥20 ; badge `⚠ écart couleur
+  notable` dans le détail "Fidélité couleurs" de la page résultat si `notable_drift`. Purement
+  informatif, aucun blocage du téléchargement (décision utilisatrice).
+
+**Iter 4 — Garde-fou générique benchmark** (`tests/run_benchmark.py`)
+- Ajout d'un contrôle générique (pas une fixture dédiée) : chaque test vérifie que
+  `notable_drift=True` n'est jamais accompagné du label "Excellent" — alerte
+  `color_fidelity_regression` imprimée en fin de run sinon. S'applique aux 22 tests existants, dont
+  5 (T01/T03/T09/T11/T14) exposent déjà un ΔE réel ≥20 et servent de garde-fou vivant.
+- **Tentative de fixture dédiée bleu/violet abandonnée** : plusieurs SVG/PNG synthétiques avec un
+  bleu-violet volontairement hors palette (`#6A0DAD`, ΔE pré-snap mesuré à 22.1 vs `Violet 613`)
+  ont été testés en pipeline complet — le fil final dans le PES correspondait exactement à notre
+  snap (ΔE post-pipeline = 0), contrairement à T01 où un snap tout aussi correct (`#134a76`) finit
+  en PES sous un fil différent (`Ultramarine #0b3d91`, ΔE réel 28.4). Cause probable : **le format
+  PES v1 n'encode qu'une table de couleurs de fil limitée** — Ink/Stitch réalise son propre second
+  snap vers cette table au moment de l'écriture, un phénomène dépendant du contenu (formes
+  simples parfois préservées exactement) et non reproductible de façon fiable à la demande. Les
+  tests existants qui exhibent déjà ce ΔE réel sont donc un garde-fou plus solide qu'une fixture
+  artificielle qui ne le reproduirait pas de façon garantie.
+
+**Score global** : 95.0/100 → 95.0/100 (0.0, score numérique identique par design — seuls les
+labels reflètent désormais honnêtement un écart de couleur réel).
+
+---
+
 ## Calibration du scoring (audit tous les 3 sessions)
 
 Dernière révision : Session 4 (2026-06-17) — S7 : calibration ciblée coverage (55→65) + jump floor (≤15 sauts)
@@ -313,7 +541,7 @@ Dernière révision : Session 4 (2026-06-17) — S7 : calibration ciblée covera
 | Critère | Verdict S4 | Seuils actuels dans previews.py |
 |---------|-----------|--------------------------------|
 | jumps | ✅ Recalibré S4 | <0.5%=100, <2%=80, **<4%=65 (nouveau)**, <8%=45, ≥8%=10 |
-| color_fidelity | ⚠️ Compromis délibéré (coeff 1.2) | `100 - int(mean_dist * 1.2)` × ratio |
+| color_fidelity | ⚠️ Compromis délibéré (coeff 1.2) + **label capping S11** | `100 - int(mean_dist * 1.2)` × ratio ; label plafonné à "Bon" si ΔE max ≥20 (score inchangé) |
 | stitches | ✅ Fiable | <100=0, <500=20(+L1+L2), <1200=60, ≤50000=100, ≤150000=75, ≤500000=35, >500000=0 |
 | density | ✅ Fiable | 0.5-20=100, 0.2-0.5=75, 20-50=65, <0.2=20, >50=15 |
 | threads | ✅ Fiable | ≤7=100, ≤10=80, ≤15=25, >15=0 |

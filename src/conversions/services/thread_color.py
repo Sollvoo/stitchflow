@@ -10,6 +10,13 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# Seuils de classification ΔE (CIE76, D65) pour l'écart perceptuel entre une couleur
+# source et le fil Brother snappé. Repères usuels : ΔE<10 = non perceptible en usage
+# courant, 10-20 = différence visible mais tolérable, ≥20 = écart net (ex: bleu-violet
+# rendu "Purple"). Calibré avec l'utilisatrice beta (session fidélité couleur).
+LIGHT_DELTA_E_THRESHOLD = 10.0
+NOTABLE_DELTA_E_THRESHOLD = 20.0
+
 # Cache module-level : chargé une seule fois par process worker
 _BROTHER_PALETTE: list[tuple[int, int, int, str]] | None = None
 _PALETTE_LOADED = False
@@ -54,6 +61,8 @@ def _find_brother_palette() -> Path | None:
                 exe_path.parent.parent / "Resources" / "palettes",
                 exe_path.parent.parent.parent / "Resources" / "palettes",
                 exe_path.parent / "palettes",
+                # Windows — layout inkstitch\bin\inkstitch.exe → inkstitch\palettes
+                exe_path.parent.parent / "palettes",
             ]:
                 p = candidate / _BROTHER_PALETTE_NAME
                 if p.exists():
@@ -135,6 +144,28 @@ def _lab_distance(
     c1: tuple[float, float, float], c2: tuple[float, float, float]
 ) -> float:
     return math.sqrt(sum((a - b) ** 2 for a, b in zip(c1, c2)))
+
+
+def classify_color_drift(delta_e: float) -> str:
+    """Classifie un écart ΔE Lab en label lisible pour l'utilisatrice."""
+    if delta_e >= NOTABLE_DELTA_E_THRESHOLD:
+        return "écart notable"
+    if delta_e >= LIGHT_DELTA_E_THRESHOLD:
+        return "léger écart"
+    return "fidèle"
+
+
+def hex_delta_e(hex1: str, hex2: str) -> float:
+    """
+    Distance perceptuelle CIE Lab entre deux couleurs hex '#rrggbb'.
+    Retourne 0.0 si l'une des deux couleurs est invalide (pas de couleur à comparer).
+    """
+    try:
+        r1, g1, b1 = int(hex1[1:3], 16), int(hex1[3:5], 16), int(hex1[5:7], 16)
+        r2, g2, b2 = int(hex2[1:3], 16), int(hex2[3:5], 16), int(hex2[5:7], 16)
+    except (ValueError, IndexError):
+        return 0.0
+    return _lab_distance(_rgb_to_lab(r1, g1, b1), _rgb_to_lab(r2, g2, b2))
 
 
 def _load_palette() -> list[tuple[int, int, int, str]] | None:
@@ -262,6 +293,7 @@ def get_snap_preview(hex_colors: list[str]) -> list[dict]:
         src_lab = _rgb_to_lab(r, g, b)
         best_lab, best_name, br, bg, bb = min(palette_lab, key=lambda e: _lab_distance(src_lab, e[0]))
         brother_hex = f"#{br:02x}{bg:02x}{bb:02x}"
+        delta_e = _lab_distance(src_lab, best_lab)
 
         # Détection collision : ce fil Brother est-il déjà assigné à une autre couleur SVG ?
         collision = brother_hex in brother_hex_to_svg and brother_hex_to_svg[brother_hex] != hex_color
@@ -273,6 +305,8 @@ def get_snap_preview(hex_colors: list[str]) -> list[dict]:
             "brother_hex": brother_hex,
             "brother_name": best_name,
             "collision": collision,
+            "delta_e": round(delta_e, 1),
+            "notable_drift": delta_e >= NOTABLE_DELTA_E_THRESHOLD,
         })
 
     return results

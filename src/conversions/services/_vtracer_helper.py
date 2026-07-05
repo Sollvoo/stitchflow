@@ -32,7 +32,9 @@ def main() -> None:
         png_path,
         svg_output_path,
         colormode='color',
-        hierarchical='stacked',
+        # cutout : formes disjointes (trous découpés) — l'ordre de broderie ne peut
+        # plus recouvrir le design, contrairement à stacked (fond brodé par-dessus)
+        hierarchical='cutout',
         filter_speckle=filter_speckle,
         color_precision=color_precision,
         layer_difference=16,

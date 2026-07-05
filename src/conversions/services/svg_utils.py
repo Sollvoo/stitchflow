@@ -4,6 +4,7 @@ Utilitaires pour la manipulation de fichiers SVG.
 
 import logging
 import math
+import os
 import re
 import shutil
 import subprocess
@@ -12,6 +13,48 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Emplacements d'installation usuels d'Inkscape quand il n'est pas dans le PATH
+# (installeur Windows par défaut, bundle macOS). Sans Inkscape, les <text> ne
+# sont jamais convertis en paths et Ink/Stitch les ignore silencieusement.
+_INKSCAPE_KNOWN_LOCATIONS: tuple[Path, ...] = (
+    Path("C:/Program Files/Inkscape/bin/inkscape.com"),
+    Path("C:/Program Files/Inkscape/bin/inkscape.exe"),
+    Path("C:/Program Files (x86)/Inkscape/bin/inkscape.exe"),
+    Path("/Applications/Inkscape.app/Contents/MacOS/inkscape"),
+)
+
+_inkscape_path_cache: str | None = None
+_inkscape_path_resolved = False
+
+
+def find_inkscape() -> str | None:
+    """
+    Résout l'exécutable Inkscape : INKSCAPE_EXECUTABLE (.env) → PATH →
+    emplacements d'installation usuels. Résultat mis en cache module.
+    """
+    global _inkscape_path_cache, _inkscape_path_resolved
+    if _inkscape_path_resolved:
+        return _inkscape_path_cache
+
+    candidate = os.environ.get("INKSCAPE_EXECUTABLE", "").strip()
+    if candidate and Path(candidate).is_file():
+        _inkscape_path_cache = candidate
+    else:
+        _inkscape_path_cache = shutil.which("inkscape")
+        if not _inkscape_path_cache:
+            for location in _INKSCAPE_KNOWN_LOCATIONS:
+                if location.is_file():
+                    _inkscape_path_cache = str(location)
+                    break
+
+    _inkscape_path_resolved = True
+    if _inkscape_path_cache is None:
+        logger.warning(
+            "Inkscape introuvable (PATH, INKSCAPE_EXECUTABLE, emplacements usuels) — "
+            "les textes SVG ne pourront pas être convertis en paths brodables."
+        )
+    return _inkscape_path_cache
 
 # Facteurs de conversion vers mm
 _UNITS_TO_MM: dict[str, float] = {
@@ -147,6 +190,20 @@ def _path_bbox_area(d: str) -> float:
     return (max(xs) - min(xs)) * (max(ys) - min(ys))
 
 
+def _path_bbox(d: str) -> tuple[float, float, float, float] | None:
+    nums = [float(m) for m in _COORD_RE.findall(d)]
+    if len(nums) < 4:
+        return None
+    xs, ys = nums[0::2], nums[1::2]
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def _bboxes_overlap(
+    a: tuple[float, float, float, float], b: tuple[float, float, float, float]
+) -> bool:
+    return not (a[2] < b[0] or b[2] < a[0] or a[3] < b[1] or b[3] < a[1])
+
+
 def _greedy_nn(items: list, centroid_fn) -> list:
     """Greedy nearest-neighbor depuis (0, 0). Retourne items réordonnés."""
     if len(items) <= 1:
@@ -175,8 +232,12 @@ def reorder_svg_paths_for_minimal_jumps(svg_path: Path) -> None:
     """
     Réordonne les paths SVG via nearest-neighbor pour minimiser les déplacements à vide.
     Modifie le fichier en place.
-    - Réordonne les <path> DANS chaque parent (<g> ou root)
-    - Réordonne les <g> directs du root entre eux
+
+    Z-order : ne réordonne QUE les runs consécutifs de paths de même fill.
+    Déplacer un path à travers un fill différent change l'ordre de broderie et
+    peut recouvrir le design (fond brodé par-dessus). Entre deux couleurs il y a
+    de toute façon une coupe de fil — l'ordre inter-couleurs n'affecte pas les
+    jumps, seul l'ordre intra-couleur compte.
     """
     _register_svg_namespaces()
     try:
@@ -190,52 +251,62 @@ def reorder_svg_paths_for_minimal_jumps(svg_path: Path) -> None:
     def _path_centroid_el(el: ET.Element) -> tuple[float, float] | None:
         return _path_centroid(el.get("d", ""))
 
-    def _group_centroid(g: ET.Element) -> tuple[float, float] | None:
-        cs = [_path_centroid_el(p) for p in g.iter() if p.tag.endswith("path")]
-        valid = [c for c in cs if c is not None]
-        if not valid:
-            return None
-        return sum(c[0] for c in valid) / len(valid), sum(c[1] for c in valid) / len(
-            valid
-        )
-
     ns_path = f"{{{_SVG_NS}}}path"
     ns_g = f"{{{_SVG_NS}}}g"
 
-    # Réordonner les paths dans chaque <g> direct
+    def _reorder_same_fill_runs(parent: ET.Element) -> int:
+        children = list(parent)
+        runs: list[list[ET.Element]] = []
+        current: list[ET.Element] = []
+        current_fill: str | None = None
+        for ch in children:
+            if ch.tag in (ns_path, "path"):
+                fill = (ch.get("fill", "") or "").lower().strip()
+                if current and fill == current_fill:
+                    current.append(ch)
+                else:
+                    if current:
+                        runs.append(current)
+                    current = [ch]
+                    current_fill = fill
+            else:
+                if current:
+                    runs.append(current)
+                current = []
+                current_fill = None
+        if current:
+            runs.append(current)
+
+        reordered_count = 0
+        new_children: list[ET.Element] = []
+        run_iter = iter(runs)
+        pending_run: list[ET.Element] | None = None
+        for ch in children:
+            if ch.tag in (ns_path, "path"):
+                if pending_run is None or not pending_run:
+                    run = next(run_iter)
+                    pending_run = (
+                        _greedy_nn(run, _path_centroid_el) if len(run) > 1 else list(run)
+                    )
+                    if len(run) > 1:
+                        reordered_count += len(run)
+                new_children.append(pending_run.pop(0))
+            else:
+                new_children.append(ch)
+        for ch in children:
+            parent.remove(ch)
+        for ch in new_children:
+            parent.append(ch)
+        return reordered_count
+
     direct_groups = [ch for ch in root if ch.tag in (ns_g, "g")]
     for g in direct_groups:
-        paths = [ch for ch in g if ch.tag in (ns_path, "path")]
-        if len(paths) <= 1:
-            continue
-        reordered = _greedy_nn(paths, _path_centroid_el)
-        for p in paths:
-            g.remove(p)
-        for p in reordered:
-            g.append(p)
-        total_paths += len(reordered)
-
-    # Réordonner les <g> eux-mêmes dans le root
-    if len(direct_groups) > 1:
-        for g in direct_groups:
-            root.remove(g)
-        for g in _greedy_nn(direct_groups, _group_centroid):
-            root.append(g)
-
-    # Réordonner aussi les <path> directs sous la racine (VTracer flat)
-    direct_paths = [ch for ch in root if ch.tag in (ns_path, "path")]
-    if len(direct_paths) > 1:
-        reordered = _greedy_nn(direct_paths, _path_centroid_el)
-        for p in direct_paths:
-            root.remove(p)
-        for p in reordered:
-            root.append(p)
-        total_paths += len(reordered)
+        total_paths += _reorder_same_fill_runs(g)
+    total_paths += _reorder_same_fill_runs(root)
 
     logger.debug(
-        "[6a] reordered %d paths, %d groups in %s",
+        "[6a] reordered %d paths (runs même fill) in %s",
         total_paths,
-        len(direct_groups),
         svg_path.name,
     )
     tree.write(svg_path, encoding="unicode", xml_declaration=True)
@@ -838,42 +909,57 @@ def group_paths_by_color(svg_path: Path) -> int:
     if len(flat_paths) <= 1:
         return 0
 
-    # Ordre d'apparition des couleurs (pour conserver l'ordre relatif des couleurs)
-    seen_colors: list[str] = []
-    for _, fill in flat_paths:
-        key = fill.lower().strip()
-        if key and key not in seen_colors:
-            seen_colors.append(key)
-
-    if len(seen_colors) <= 1:
+    keys = [fill.lower().strip() for _, fill in flat_paths]
+    if len({k for k in keys if k}) <= 1:
         return 0
 
     changes_before = sum(
         1 for i in range(1, len(flat_paths)) if flat_paths[i][1] != flat_paths[i - 1][1]
     )
 
-    by_color: dict[str, list[ET.Element]] = {c: [] for c in seen_colors}
-    ungrouped: list[ET.Element] = []
+    bboxes = [_path_bbox(p.get("d", "")) for p, _ in flat_paths]
 
-    for path, fill in flat_paths:
-        key = fill.lower().strip()
-        if key in by_color:
-            by_color[key].append(path)
+    # SVG vectorisé en formes disjointes (VTracer cutout) : aucun recouvrement
+    # possible → fusion libre des couleurs, sans garde de chevauchement.
+    disjoint = root.get("data-stitchflow-disjoint") == "1"
+
+    # Fusion z-safe : un path rejoint le dernier bloc de sa couleur uniquement si
+    # sa bbox ne chevauche aucun path d'une autre couleur qu'il devrait « enjamber »
+    # (l'ordre de broderie = ordre de superposition sur les formes empilées).
+    blocks: list[tuple[str, list[int]]] = []
+    last_block_of: dict[str, int] = {}
+
+    for i, key in enumerate(keys):
+        target = last_block_of.get(key)
+        can_merge = False
+        if target is not None:
+            can_merge = True
+            if not disjoint:
+                for j in range(i):
+                    in_later_block = False
+                    for b_idx in range(target + 1, len(blocks)):
+                        if j in blocks[b_idx][1]:
+                            in_later_block = True
+                            break
+                    if not in_later_block:
+                        continue
+                    if keys[j] == key:
+                        continue
+                    if (
+                        bboxes[i] is not None
+                        and bboxes[j] is not None
+                        and _bboxes_overlap(bboxes[i], bboxes[j])
+                    ):
+                        can_merge = False
+                        break
+        if can_merge and target is not None:
+            blocks[target][1].append(i)
         else:
-            ungrouped.append(path)
+            blocks.append((key, [i]))
+            last_block_of[key] = len(blocks) - 1
 
-    # Réordonner les groupes couleur par centroïde NN pour minimiser les sauts entre fils
-    def _color_group_centroid(color: str) -> tuple[float, float] | None:
-        paths = by_color.get(color, [])
-        cs = [_path_centroid(p.get("d", "")) for p in paths]
-        valid = [c for c in cs if c is not None]
-        if not valid:
-            return None
-        return sum(c[0] for c in valid) / len(valid), sum(c[1] for c in valid) / len(
-            valid
-        )
-
-    seen_colors = _greedy_nn(seen_colors, _color_group_centroid)
+    def _el_centroid(idx: int) -> tuple[float, float] | None:
+        return _path_centroid(flat_paths[idx][0].get("d", ""))
 
     for path, _ in flat_paths:
         try:
@@ -881,11 +967,10 @@ def group_paths_by_color(svg_path: Path) -> int:
         except ValueError:
             pass
 
-    for color in seen_colors:
-        for path in by_color[color]:
-            root.append(path)
-    for path in ungrouped:
-        root.append(path)
+    for _, indices in blocks:
+        # NN intra-bloc : même couleur, aucun impact visuel, minimise les jumps
+        for idx in _greedy_nn(indices, _el_centroid):
+            root.append(flat_paths[idx][0])
 
     fills_after = [ch.get("fill", "") for ch in root if ch.tag in (ns_path, "path")]
     changes_after = sum(
@@ -920,14 +1005,25 @@ def _count_svg_unique_fills(svg_path: Path) -> int:
 
 def normalize_stroke_only_paths(svg_path: Path) -> int:
     """
-    Convertit les paths stroke-only (fill absent ou 'none', stroke='#rrggbb') en fill='#rrggbb'.
+    Rend brodables les paths stroke-only (fill absent ou 'none', stroke='#rrggbb').
 
-    Ces paths représentent typiquement du texte vectorisé en contours ou des formes avec
-    bordure colorée. Ink/Stitch ignore les paths sans fill — cette conversion les rend brodables.
-    Le stroke est mis à 'none' après la conversion pour éviter les doubles stitches.
+    Deux traitements selon la géométrie :
+    - petites formes fermées (glyphes de texte vectorisé, cas S8) → fill='#rrggbb'
+      (lettres pleines lisibles) ;
+    - paths ouverts (lignes, arcs) et grandes formes fermées (cercles décoratifs,
+      anneaux, cadres) → laissés INTACTS : Ink/Stitch brode nativement les strokes
+      nus en points courants. Les convertir en fill remplirait toute la surface
+      englobée (un cercle-contour devient un disque plein qui recouvre le design —
+      vu S12 sur mandala et écusson après activation d'Inkscape object-to-path).
+      ⚠️ Ne PAS poser inkstitch:stroke_method="running_stitch" ici : mesuré S12,
+      l'annotation sur ces paths fait passer Ink/Stitch de 11s à timeout 300s
+      (même famille que le bug fill_method S9).
 
     Retourne le nombre de paths modifiés.
     """
+    # Une forme fermée dont la bbox couvre ≥ 15% du viewBox est un contour
+    # décoratif (cadre, anneau), pas un glyphe : le remplir détruirait le design.
+    _MAX_CLOSED_FILL_COVERAGE = 0.15
     _register_svg_namespaces()
     try:
         tree = ET.parse(svg_path)
@@ -953,6 +1049,15 @@ def normalize_stroke_only_paths(svg_path: Path) -> int:
         except (ValueError, ZeroDivisionError):
             pass
     _MIN_STROKE_MM = 1.0
+
+    viewbox_area = 0.0
+    if viewbox_attr:
+        try:
+            vb_parts = viewbox_attr.split()
+            if len(vb_parts) == 4:
+                viewbox_area = float(vb_parts[2]) * float(vb_parts[3])
+        except ValueError:
+            pass
 
     for el in root.iter():
         if el.tag not in (ns_path, "path"):
@@ -983,6 +1088,20 @@ def normalize_stroke_only_paths(svg_path: Path) -> int:
         is_stroke_color = stroke.startswith("#") and len(stroke) == 7
 
         if is_fill_none and is_stroke_color:
+            d = el.get("d", "")
+            is_closed = "z" in d.lower()
+            coverage = 0.0
+            if viewbox_area > 0:
+                nums = [float(m) for m in _COORD_RE.findall(d)]
+                if len(nums) >= 4:
+                    xs, ys = nums[0::2], nums[1::2]
+                    coverage = (
+                        (max(xs) - min(xs)) * (max(ys) - min(ys)) / viewbox_area
+                    )
+
+            if not is_closed or coverage >= _MAX_CLOSED_FILL_COVERAGE:
+                continue
+
             try:
                 sw_svg = float(el.get("stroke-width", "1").strip())
             except ValueError:
@@ -1237,7 +1356,7 @@ def prepare_svg_for_inkstitch(svg_path: Path) -> dict[str, int]:
         "fill_methods_stripped": 0,
     }
 
-    inkscape = shutil.which("inkscape")
+    inkscape = find_inkscape()
     if inkscape:
         actions = (
             "select-all;object-to-path;"
@@ -1283,11 +1402,41 @@ def prepare_svg_for_inkstitch(svg_path: Path) -> dict[str, int]:
     stats["invisible_removed"] = _remove_invisible_elements(root)
     stats["clips_stripped"] = _strip_clip_path_refs(root)
     stats["fill_methods_stripped"] = _strip_fill_method_annotations(root)
+    stats["text_remaining"] = count_unconverted_text_elements(root)
+    if stats["text_remaining"] > 0:
+        logger.warning(
+            "[svg-prep] %d élément(s) <text> non convertis en paths — "
+            "ils seront IGNORÉS par Ink/Stitch (Inkscape requis pour le texte)",
+            stats["text_remaining"],
+        )
 
-    if any(v > 0 for k, v in stats.items() if k != "inkscape_run"):
+    if any(
+        v > 0 for k, v in stats.items() if k not in ("inkscape_run", "text_remaining")
+    ):
         tree.write(svg_path, encoding="unicode", xml_declaration=True)
 
     return stats
+
+
+def count_unconverted_text_elements(svg_root_or_path: Path | ET.Element) -> int:
+    """
+    Compte les <text> SVG avec contenu réel — non convertis en paths, donc
+    invisibles pour Ink/Stitch (le texte disparaît du PES sans erreur).
+    """
+    if isinstance(svg_root_or_path, Path):
+        try:
+            root = ET.parse(svg_root_or_path).getroot()
+        except (ET.ParseError, OSError):
+            return 0
+    else:
+        root = svg_root_or_path
+
+    count = 0
+    for el in root.iter(f"{{{_SVG_NAMESPACES['']}}}text"):
+        content = "".join(el.itertext()).strip()
+        if content:
+            count += 1
+    return count
 
 
 def get_svg_colors_with_count(svg_path: Path) -> list[dict]:

@@ -289,6 +289,7 @@ Objectif : donner à l'utilisateur une vue sur ses conversions passées. Nécess
 ### Prérequis avant d'ouvrir la beta
 
 - [ ] **Conversation avec l'utilisatrice beta** : lui expliquer le projet commercial, valider le prix (€3/conv.), sonder son réseau — à faire avant tout lancement public (voir `docs/strategie-marketing.md §2`)
+- [ ] **Retirer le lien "Télécharger le SVG" de la page résultat** (`partials/conversion_status.html`) — utile en debug pendant la beta pour diagnostiquer où un problème s'est produit dans le pipeline, mais expose un artefact technique sans valeur pour l'utilisatrice finale. À retirer (ou masquer derrière un mode debug) avant l'ouverture publique
 - [x] **Landing page** `/landing/` avec liste d'attente email — hero + bénéfices + encart honnêteté scope, model `WaitlistEmail` dans `core/` (email unique, doublon silencieux), admin
 
 ### Auth & sécurité ✅
@@ -403,3 +404,14 @@ Objectif : stocker la machine de l'utilisateur dans son profil et adapter toutes
 
 - [ ] API REST pour intégrations tierces (ateliers de broderie, e-commerce Shopify/WooCommerce)
 - [ ] Webhooks de notification (job terminé, erreur)
+
+### 13d — Barre de progression réelle & estimation fiable ✅
+
+Objectif : remplacer le spinner + barre indéterminée par un suivi réel de la conversion. Consultation `/stitch-advisor` : la promesse marketing "30 secondes" (`differenciateurs.md`) doit rester un plafond, pas une moyenne — cible P50 SVG ≤ 8s, P95 raster ≤ 15s.
+
+- [x] `ConversionJob.progress_pct` / `progress_step` / `duration_seconds` (migration `0008`) — mis à jour à chaque étape majeure du pipeline via `_set_progress()` dans `tasks.py`
+- [x] Barre de progression réelle dans `conversion_status.html` (largeur pilotée par `progress_pct`, plus d'animation indéterminée), polling HTMX réduit à 1s
+- [x] `services/estimation.py` : estimation du temps basée sur la moyenne des 20 dernières conversions complétées du même format (repli sur heuristique statique si <5 échantillons)
+- [x] Instrumentation `logger.debug('[timing] ...')` par étape du pipeline (Inkscape prep, tri/couleurs, Ink/Stitch CLI) — mesure objective pour cibler une future optimisation, aucune régression qualité (benchmark 95.4/100 confirmé après implémentation)
+- [x] Vérification ciblée de `generate_pes_preview()` : déjà un rendu de vrais points de broderie (pas un simple remplissage vectoriel) — conservé tel quel
+- [ ] **Suivi futur** : analyser les logs `[timing]` sur des cas réels pour identifier objectivement le goulot d'étranglement (cascade de vectorisation VTracer→potrace→Inkscape suspectée) avant toute optimisation de performance ciblée

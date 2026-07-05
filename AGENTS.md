@@ -4,7 +4,7 @@
 
 StitchFlow est une application web Django permettant de convertir des fichiers SVG, PNG, JPEG, WebP et PDF en fichiers de broderie `.PES` via Ink/Stitch CLI.
 
-**État actuel (juin 2025) :** Phases 1–6 terminées. Pipeline complet opérationnel. Phase 7 (assistant pré-conversion) et Phase 8 (éditeur SVG) à démarrer.
+**État actuel (juillet 2026) :** Phases 1–11 terminées. Pipeline complet + auth + dashboard + éditeur broderie avancé opérationnels. Phase 8e (stabilisation SVG→PES) et Phase 13a (profil machine) en cours.
 
 ## Stack technique
 
@@ -318,16 +318,53 @@ Fichier principal : `conversions/tasks.py` → `process_conversion_job()`
 ## Règle de mise à jour de la Roadmap
 
 **Obligatoire à chaque fin de session de développement :**
-- Cocher `[x]` dans `ROADMAP.md` tous les éléments terminés dans la session
+- Cocher `[x]` dans `docs/ROADMAP.md` tous les éléments terminés dans la session
 - Ajouter les nouvelles fonctionnalités décidées (même non implémentées)
 - Ne jamais laisser la roadmap en décalage avec l'état réel du code
 - Si une Phase est entièrement cochée, ajouter ✅ à son titre
 
 ---
 
+## Command /improve-converter — Amélioration qualité convertisseur
+
+Pour améliorer la qualité du pipeline de conversion, une commande dédiée est disponible dans `.claude/commands/improve-converter.md`. Son équivalent Codex est reproduit ici.
+
+### Workflow d'amélioration qualité
+
+1. **Signaler les cas ratés** : indiquer les fichiers PNG/SVG/PDF qui ont donné de mauvais résultats (PES catastrophique, tatami massif, couleurs perdues)
+2. **Diagnostic par étape** : identifier si l'échec est dans PNG→SVG (VECT), préparation SVG (SVG_PREP), ou conversion Ink/Stitch (INK_STITCH)
+3. **Benchmark** : `python tests/run_benchmark.py` — 20 tests automatisés, score 0–100
+4. **Fixes ciblés** : modifier uniquement les fichiers de service (`previews.py`, `png_processing.py`, `svg_utils.py`, `thread_color.py`, `pdf_processing.py`)
+5. **Vérification** : benchmark partiel après chaque fix + tests unitaires
+
+### Codes de diagnostic pipeline
+
+| Code | Étape | Symptômes |
+|------|-------|-----------|
+| `VECT` | PNG→SVG vectorisation | Couleurs manquantes, artefacts, mauvais nombre de zones |
+| `SVG_PREP` | Préparation SVG pour Ink/Stitch | Tatami massif, paths ignorés, namespace manquant |
+| `INK_STITCH` | Conversion Ink/Stitch | PES vide, timeout, dimensions incorrectes |
+| `SCORING` | Calcul score qualité | Score ne reflète pas la qualité réelle brodée |
+
+### Règles de sécurité absolues
+
+- **Jamais modifier** `models.py`, `views.py`, `settings.py`, `urls.py`, `celery.py`, `tasks.py`
+- **Rollback immédiat** si T01 (<86) ou T08 (<100) régressent après un fix
+- **Maximum 2 fichiers modifiés par itération**
+- **Jamais retenter** les approches documentées comme échecs dans `docs/converter-memory.md`
+
+### Score actuel et objectifs
+
+- Score actuel : **95.7/100** (S7, 20 tests) — Session 8 à relancer
+- Objectif : 95.0/100 (**ATTEINT S6, maintenu S7**)
+- Test anti-régression absolu : T08 = 100/100 (SVG cercle simple)
+- T05 = ceiling naturel (photo complexe, 91/100, ne pas s'acharner)
+
+---
+
 ## Points d'attention pour les agents IA
 
-- Le venv est à `.venv/` à la racine — **toujours l'activer** avant toute commande Python
+- **Venv Windows** : `.venv\Scripts\python.exe` / `.venv\Scripts\activate` — **macOS** : `source .venv/bin/activate`
 - `manage.py` est dans `src/` → commande : `python src/manage.py`
 - Celery : `cd src && celery -A stitchflow worker` ou `PYTHONPATH=src celery -A stitchflow worker`
 - Vite : `cd src/frontend && npm run dev` ou `npm run build`
@@ -340,3 +377,4 @@ Fichier principal : `conversions/tasks.py` → `process_conversion_job()`
 - HTMX polling : le partial `conversion_status.html` inclut son propre `hx-trigger` uniquement si le job n'est pas terminal
 - Pour ajouter PostgreSQL : `pip install psycopg[binary]` + `DATABASE_URL=postgresql://...` dans `.env`
 - `BASE_DIR` dans settings.py pointe vers `src/` ; `BASE_DIR.parent` = racine du projet
+- **Sur Windows** : pas de `vendor/vtracer` ARM64 → VTracer Python API est le primary (fix S8), potrace et Inkscape comme fallbacks

@@ -31,8 +31,14 @@ class ConversionJob(models.Model):
     vectorized_svg_file = models.FileField(
         upload_to='conversions/vectorized/', blank=True, null=True
     )
+    prepared_svg_file = models.FileField(
+        upload_to='conversions/prepared/', blank=True, null=True
+    )
     n_colors = models.PositiveSmallIntegerField(null=True, blank=True)
     remove_background = models.BooleanField(default=False)
+    progress_pct = models.PositiveSmallIntegerField(default=0)
+    progress_step = models.CharField(max_length=100, blank=True)
+    duration_seconds = models.FloatField(null=True, blank=True)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,

@@ -1,26 +1,20 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" width="600" height="400">
-  <rect width="600" height="400" fill="#0d0d0d"/>
-  <!-- Ligne fine décorative haut -->
-  <line x1="40" y1="60" x2="560" y2="60" stroke="#d4af37" stroke-width="0.8"/>
-  <line x1="40" y1="67" x2="560" y2="67" stroke="#d4af37" stroke-width="2.5"/>
-  <!-- Lettres principales en contour fin (stroke-only) -->
-  <text x="300" y="230" font-family="Georgia,serif" font-size="160" font-weight="bold"
-        fill="none" stroke="#d4af37" stroke-width="1.5"
-        text-anchor="middle" letter-spacing="-5">MAISON</text>
-  <!-- Ombre décalée -->
-  <text x="303" y="233" font-family="Georgia,serif" font-size="160" font-weight="bold"
-        fill="none" stroke="#6b5a1e" stroke-width="1"
-        text-anchor="middle" letter-spacing="-5">MAISON</text>
-  <!-- Sous-titre espacé -->
-  <text x="300" y="295" font-family="Arial,sans-serif" font-size="22"
-        fill="#d4af37" text-anchor="middle" letter-spacing="18">COUTURE</text>
-  <!-- Ligne fine décorative bas -->
-  <line x1="40" y1="333" x2="560" y2="333" stroke="#d4af37" stroke-width="2.5"/>
-  <line x1="40" y1="340" x2="560" y2="340" stroke="#d4af37" stroke-width="0.8"/>
-  <!-- Points décoratifs -->
-  <circle cx="40"  cy="200" r="4" fill="#d4af37"/>
-  <circle cx="560" cy="200" r="4" fill="#d4af37"/>
-  <text x="300" y="370" font-family="Arial,sans-serif" font-size="14"
-        fill="#666" text-anchor="middle" letter-spacing="6">PARIS · DEPUIS 1923</text>
+  <rect width="600" height="400" fill="#0d0d0d" />
+  
+  <line x1="40" y1="60" x2="560" y2="60" stroke="#d4af37" stroke-width="0.8" />
+  <line x1="40" y1="67" x2="560" y2="67" stroke="#d4af37" stroke-width="2.5" />
+  
+  <text x="300" y="230" font-family="Georgia,serif" font-size="160" font-weight="bold" fill="none" stroke="#d4af37" stroke-width="1.5" text-anchor="middle" letter-spacing="-5">MAISON</text>
+  
+  <text x="303" y="233" font-family="Georgia,serif" font-size="160" font-weight="bold" fill="none" stroke="#6b5a1e" stroke-width="1" text-anchor="middle" letter-spacing="-5">MAISON</text>
+  
+  <text x="300" y="295" font-family="Arial,sans-serif" font-size="22" fill="#d4af37" text-anchor="middle" letter-spacing="18">COUTURE</text>
+  
+  <line x1="40" y1="333" x2="560" y2="333" stroke="#d4af37" stroke-width="2.5" />
+  <line x1="40" y1="340" x2="560" y2="340" stroke="#d4af37" stroke-width="0.8" />
+  
+  <circle cx="40" cy="200" r="4" fill="#d4af37" />
+  <circle cx="560" cy="200" r="4" fill="#d4af37" />
+  <text x="300" y="370" font-family="Arial,sans-serif" font-size="14" fill="#666" text-anchor="middle" letter-spacing="6">PARIS · DEPUIS 1923</text>
 </svg>

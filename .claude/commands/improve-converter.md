@@ -3,237 +3,326 @@
 Tu es un ingénieur Python senior spécialisé dans la broderie numérique et les pipelines de conversion de fichiers.
 
 **Ce que fait cette commande :**
-1. Pose 3 questions utilisateur (priorité session, rythme nouveaux tests)
-2. Lit l'état actuel depuis `docs/converter-memory.md` (section LIRE EN PREMIER)
-3. Lance un benchmark complet pour obtenir le score "avant" réel
-4. Analyse les résultats avec `/sequential-thinking` pour identifier les meilleurs fixes (ROI = impact × tests affectés / effort)
-5. Applique les fixes en itérations mesurées (benchmark partiel après chaque fix)
-6. Met à jour `docs/converter-memory.md` et affiche un rapport final
+1. Recueille les cas ratés signalés par l'utilisateur (optionnel)
+2. Lit l'état actuel depuis `docs/converter-memory.md`
+3. Lance le benchmark complet pour obtenir le score "avant" réel
+4. **Diagnostique intelligemment** chaque échec par étape de pipeline (PNG→SVG vs SVG→PES vs scoring)
+5. Analyse les résultats avec `/sequential-thinking` — ROI = impact × tests affectés / effort
+6. Applique les fixes en itérations mesurées avec benchmark partiel après chaque fix
+7. Met à jour `docs/converter-memory.md` et affiche un rapport final
 
 ---
 
 ## IMPORTANT — Mode plan obligatoire
 
-Cette commande est **toujours exécutée en mode plan** (`/plan`). Avant tout changement de code :
-- Présente le plan complet des fixes avec justification ROI
-- Attends la validation explicite avant d'implémenter quoi que ce soit
+**Invoquer immédiatement `/plan` (EnterPlanMode) au début de cette commande.** Ne pas écrire de code tant que le plan n'est pas approuvé par l'utilisateur via ExitPlanMode.
+
+En mode plan :
+1. Lis les fichiers sources (Read tool autorisé)
+2. Lance le benchmark (Bash tool autorisé en lecture)
+3. Produis le diagnostic et le plan complet avec justification ROI par étape de pipeline
+4. Pose les questions AskUserQuestion nécessaires
+5. Attends l'approbation — puis seulement commence les modifications de code
 
 ---
 
-## Phase 0a — Questions utilisateur (OBLIGATOIRE EN PREMIER)
+## Phase 0a — Recueil des cas ratés (optionnel, prioritaire si fournis)
 
-Avant toute analyse, utiliser `AskUserQuestion` pour orienter la session :
+**Si l'utilisateur a indiqué des fichiers ou conversions qui ont mal marché**, les noter immédiatement :
+
+```
+Fichier signalé : <chemin ou description>
+Symptôme décrit : <ce que l'utilisateur a observé>
+```
+
+Pour chaque cas signalé → lancer la **Phase 0d - Diagnostic pipeline** dessus AVANT le benchmark général.
+
+---
+
+## Phase 0b — Questions utilisateur
+
+Utiliser `AskUserQuestion` pour orienter la session :
 
 **Q1 — Priorité de cette session ?**
-- "Fixes de calibration scoring — améliorer les métriques" (Recommandé si session S7, S10...)
+- "Corriger des cas ratés signalés" (Recommandé si l'utilisateur a décrit des échecs)
 - "Amélioration pipeline — réduire jumps / améliorer coverage"
+- "Audit calibration scoring (obligatoire session S9, S12...)"
 - "Nouveaux tests difficiles — élargir le benchmark"
-- "Les trois (session longue)"
 
-**Q2 — Rythme d'ajout de nouveaux tests durs ?**
+**Q2 — Rythme d'ajout de nouveaux tests ?**
 - "Progressif — 2 tests maximum" (Recommandé)
 - "Aucun nouveau test — se concentrer sur les tests existants"
 - "Agressif — 3 à 5 nouveaux tests"
 
-**Note audit scoring :** si la session est numérotée S7, S10, S13... (numéro divisible par 3) → **audit calibration OBLIGATOIRE** des seuils de scoring dans `previews.py` (tous les 3 sessions pour éviter de s'entraîner sur de fausses métriques).
+**Note audit scoring :** si la session est S9, S12, S15... (numéro divisible par 3) → **audit calibration OBLIGATOIRE** des seuils dans `previews.py`.
 
 ---
 
-## Phase 0b — Lecture de l'état actuel
+## Phase 0c — Lecture de l'état actuel
 
-### Lire docs/converter-memory.md
+Extraire depuis `docs/converter-memory.md` section **[LIRE EN PREMIER]** :
+- Score de référence actuel
+- Tests anti-régression (T01 min, T08 = 100 obligatoire)
+- Prochaines priorités identifiées
+- **Ce qui a été tenté et n'a PAS fonctionné** (ne jamais retenter)
+- Numéro de la dernière session → incrémenter pour cette session
 
-Extraire depuis la section **[LIRE EN PREMIER]** :
-- Le **score de référence** (Score actuel)
-- Les **tests anti-régression** (T01 min, T08 = 100 obligatoire)
-- Les **niveaux de difficulté** des tests
-- Les **prochaines priorités**
-- **Ce qui a été tenté et n'a PAS fonctionné** (ne pas retenter ces approches)
-- Le numéro de la dernière session (pour incrémenter)
+---
 
-### Lancer le benchmark baseline
+## Phase 0d — Diagnostic pipeline par étape (CRITIQUE)
 
-```bash
-source /Users/hugobonnet/Developer/StitchFlow/.venv/bin/activate
-cd /Users/hugobonnet/Developer/StitchFlow
-python tests/run_benchmark.py
+Pour **chaque fichier signalé comme raté** ET pour les tests qui ont un score < 93 dans le benchmark :
+
+### Étape D1 — Identifier la phase d'échec
+
+Lancer le diagnostic en deux temps :
+
+```python
+# 1. Tester PNG→SVG seul (sans Ink/Stitch)
+# Dans run_benchmark.py ou directement :
+from conversions.services import png_processing, pdf_processing
+svg_path = png_processing.vectorize_png_to_svg(image_path, n_colors=N, ...)
+# Inspecter le SVG généré : nombre de paths, couleurs, taille
+
+# 2. Tester SVG→PES seul (avec un SVG connu-bon)
+from conversions.services import inkstitch
+result = inkstitch.convert_svg_to_pes(svg_path, target_width_mm=80)
+# Inspecter le PES : nb fils, nb points, dimensions
 ```
 
-Ce script est autonome (sans Celery, sans HTTP). Il appelle directement les fonctions de service Django.
-Le résultat s'affiche en tableau dans stdout + fichier JSON `tests/benchmark_results_TIMESTAMP.json`.
+### Étape D2 — Classer l'échec
 
-**Score "avant" de cette session = score moyen produit par ce premier run.**
+Pour chaque test sous-performant, classifier dans l'une de ces catégories :
 
-Si le benchmark échoue sur un test individuel, noter l'erreur et continuer.
-Si le benchmark ne démarre pas du tout, lire `tests/run_benchmark.py` pour diagnostiquer.
+| Code | Étape | Symptômes typiques |
+|------|-------|-------------------|
+| `VECT` | PNG→SVG vectorisation | Mauvais nombre de couleurs, artefacts, zones manquantes |
+| `SVG_PREP` | Préparation SVG pour Ink/Stitch | Tatami massif, namespace manquant, paths ignorés |
+| `INK_STITCH` | Conversion Ink/Stitch | PES vide, timeout, dimensions incorrectes |
+| `SCORING` | Calcul score uniquement | Score ne reflète pas la qualité réelle |
+
+### Étape D3 — Inspecter le SVG intermédiaire
+
+Pour les échecs `SVG_PREP` ou `INK_STITCH`, inspecter le SVG qui entre dans Ink/Stitch :
+
+**Checklist SVG obligatoire :**
+- [ ] `xmlns:inkstitch` déclaré dans la balise `<svg>` ?
+- [ ] Tous les paths ont un attribut `fill` (pas seulement `stroke`) ?
+- [ ] Tous les paths se terminent par `Z` (fermés) ?
+- [ ] Y a-t-il un path de fond couvrant >80% du viewBox ? (tatami potentiel)
+- [ ] Les attributs `inkstitch:row_spacing_mm` sont-ils présents et bien syntaxés ?
+- [ ] Le viewBox est-il en mm (non en pixels) ?
+
+**Commande rapide d'inspection :**
+```bash
+# Lire l'en-tête SVG pour vérifier le namespace
+python -c "
+import xml.etree.ElementTree as ET
+tree = ET.parse('path/to/intermediate.svg')
+root = tree.getroot()
+print('Namespace:', root.attrib)
+print('Paths:', len(root.findall('.//{http://www.w3.org/2000/svg}path')))
+print('Has inkstitch:', 'inkstitch' in str(root.attrib))
+"
+```
+
+### Étape D4 — Résumé diagnostic
+
+Avant d'entrer en analyse, produire ce tableau :
+
+```
+DIAGNOSTIC PRÉ-SESSION
+═══════════════════════════════════════════════════
+Fichiers signalés par l'utilisateur :
+  [FICHIER] → étape d'échec : [CODE] — [description courte]
+
+Tests benchmark sous-performants (< 93) :
+  TXX (score=YY) → étape d'échec : [CODE] — [critère le plus faible]
+═══════════════════════════════════════════════════
+```
 
 ---
 
-## Phase 1 — Analyse avec sequential-thinking
+## Phase 1 — Benchmark baseline
 
-Utilise `/sequential-thinking` (6 à 8 pensées) pour analyser les résultats du benchmark.
+```bash
+# Windows (PowerShell)
+& "C:\Users\hugob\Desktop\Developer\StichFlow\.venv\Scripts\python.exe" tests/run_benchmark.py
+
+# macOS/Linux
+source .venv/bin/activate && python tests/run_benchmark.py
+```
+
+Le script est autonome (sans Celery, sans HTTP). Il appelle directement les fonctions de service Django.
+
+**Le score "avant" de cette session = score moyen de ce premier run.**
+
+Si un test individuel échoue → noter l'erreur, identifier l'étape via Phase 0d, continuer.
+
+---
+
+## Phase 2 — Analyse avec /sequential-thinking
+
+Utiliser `/sequential-thinking` (6–8 pensées) pour analyser les résultats.
 
 **Questions à traiter dans l'analyse :**
 
-1. Quels tests ont les pires scores absolus ? Quels tests ont le plus régressé par rapport à la session précédente ?
-2. Pour chaque test sous-performant : quelle composante du `score_details` est responsable (stitches / coverage / color_fidelity / jumps / density / dimensions) ?
-3. Y a-t-il des patterns par format (PNG systématiquement plus faible que SVG, etc.) ?
+1. Quels tests ont les pires scores ? Quel est leur CODE de diagnostic (VECT / SVG_PREP / INK_STITCH / SCORING) ?
+2. Y a-t-il des patterns : tous les PNG ratent sur SVG_PREP ? Tous les PDFs sur VECT ?
+3. Pour les cas signalés par l'utilisateur : confirmer/infirmer le diagnostic par étape
 4. Pour les 3 meilleurs candidats fixes :
    - Quel delta de score est réaliste ?
-   - Combien de tests sont affectés ?
-   - Risque de régression sur T01 (PNG mono) et T08 (SVG simple, doit rester à 100) ?
-   - Effort d'implémentation (10 lignes / 50 lignes / refactor complet) ?
-5. Quel est l'ordre optimal des 3 itérations (du plus impactant au plus risqué) ?
-6. Y a-t-il des fixes à éviter absolument (rompent une invariante, affectent >3 fichiers à la fois) ?
+   - Combien de tests sont affectés (et sur quelle étape) ?
+   - Risque de régression T01 (PNG mono, min=86) et T08 (SVG trivial, doit=100) ?
+   - Effort : 10 lignes / 50 lignes / refactor complet ?
+5. Quel est l'ordre optimal des fixes (plus impactant → plus risqué) ?
+6. Y a-t-il des fixes à éviter (rompent une invariante, modifient >2 fichiers) ?
 
-**Architecture du score (référence pour l'analyse) :**
+**Architecture du score (référence) :**
 
 ```
-Critères pondérés (previews.py) — seuils exacts au 2026-06-17 :
-  - threads 18%       — ≤7=100, ≤10=80, ≤15=25, >15=0
-  - stitches 18%      — <100=0, <500=20(+corrections L1/L2 density-aware), <1200=60, ≤50000=100, ≤150000=75, ≤500000=35, >500000=0
-  - dimensions 14%    — dans zone 360×200mm et ≥20×5mm = 100, légèrement hors zone = 55, hors zone = 0
-  - jumps 10%         — <0.5%=100, <2%=80, <4%=65, <8%=45, ≥8%=10
-  - density 10%       — 0.5-20 pts/mm²=100, 0.2-0.5=75, 20-50=65, <0.2=20, >50=15
-  - color_fidelity 18%— 100-int(ΔLab×1.2) × (0.4+0.6×ratio_fils)
-  - coverage 12%      — ratio couleurs obtenues/demandées, floor 80 quasi-couverture, floor 55 partielle
+Critères pondérés (previews.py) :
+  threads      18% — ≤7=100, ≤10=80, ≤15=25, >15=0
+  stitches     18% — <100=0, <500=20(+density-aware), <1200=60, ≤50000=100, ≤150000=75, ≤500000=35, >500000=0
+  dimensions   14% — dans zone machine (profil utilisateur ou 360×200mm) = 100
+  jumps        10% — <0.5%=100, <2%=80, <4%=65, <8%=45, ≥8%=10 + floor 65 si ≤15 sauts absolus
+  density      10% — 0.5–20 pts/mm²=100, 0.2–0.5=75, 20–50=65, <0.2=20, >50=15
+  color_fidelity 18% — 100−int(ΔLab×1.2) × (0.4+0.6×ratio_fils), floor 70 si ratio≥0.8 et ΔLab≤35
+  coverage     12% — ratio couleurs obtenues/demandées, floor 80 quasi-couverture, floor 65 partielle
 
 Gate (plafond conditionnel) :
-  - Pour raster (PNG/JPEG/WebP/PDF scanné) : essential_min = min(s_score, c_score)
-  - Pour SVG direct : essential_min = s_score seul
-  - essential_min < 20 → score final plafonné à 40
-  - essential_min < 40 → score final plafonné à 65
-  - Sinon : pas de plafond
+  Pour raster (PNG/JPEG/WebP/PDF scanné) : essential_min = min(s_score, c_score)
+  Pour SVG direct : essential_min = s_score seul
+  essential_min < 20 → plafonné à 40 ; essential_min < 40 → plafonné à 65
 ```
 
 ---
 
-## Phase 2, 3, 4 — Trois cycles d'amélioration
+## Phase 3, 4, 5 — Trois cycles d'amélioration
 
 ### Structure de chaque cycle
 
 ```
-1. Sélectionner le fix retenu (celui avec meilleur ROI non encore appliqué)
-2. Lire le fichier concerné AVANT de modifier (Read tool)
-3. Appliquer le fix (Edit tool — jamais Write sur un fichier existant)
-4. Vérifier la syntaxe :
+1. Sélectionner le fix retenu (meilleur ROI non encore appliqué)
+2. Identifier l'étape de pipeline ciblée (VECT / SVG_PREP / INK_STITCH / SCORING)
+3. Lire le fichier concerné AVANT de modifier (Read tool)
+4. Appliquer le fix (Edit tool — jamais Write sur fichier existant)
+5. Vérifier la syntaxe :
+      # Windows
+      .venv\Scripts\python.exe -m ruff check src/conversions/services/
+      # macOS
       source .venv/bin/activate && ruff check src/conversions/services/
-5. Lancer les tests unitaires existants :
+6. Lancer les tests unitaires :
+      # Windows
+      .venv\Scripts\python.exe src/manage.py test conversions -v 0
+      # macOS
       source .venv/bin/activate && python src/manage.py test conversions -v 0
-6. Re-lancer le benchmark sur les tests affectés + T01 + T08 :
+7. Re-lancer le benchmark sur les tests affectés + T01 + T08 :
       python tests/run_benchmark.py --tests T01,T08,<tests_affectés>
-7. Mesurer le delta score
-8. Si T01 ou T08 régressent de > 5 points → rollback immédiat (Edit pour revenir à l'original)
-9. Logger l'itération dans docs/converter-memory.md (en cours de session)
+8. Mesurer le delta score
+9. Si T01 ou T08 régressent de > 5 points → rollback immédiat
+10. Logger l'itération dans docs/converter-memory.md (en cours de session)
 ```
 
 ### Règles de sécurité absolues
 
-- **Audit calibration (tous les 3 sessions)** : si la session est S7, S10, S13... → relire tous les seuils de scoring dans `previews.py` et valider contre réalité broderie PR1050X avant de faire des fixes (sinon on s'entraîne sur de fausses métriques)
-- **Ne JAMAIS modifier** `models.py`, `views.py`, `settings.py`, `urls.py`, `celery.py`
-- **Ne JAMAIS changer** les signatures des fonctions publiques exportées (celles importées dans `tasks.py`)
-- **Ne JAMAIS utiliser** `shell=True` dans subprocess
-- **Toujours utiliser** `Path` pour les chemins, jamais des strings hardcodées
-- **Toujours typer** les nouveaux paramètres de fonctions
-- **Rollback immédiat** si T01 ou T08 régressent de > 5 points après un fix
+- **Jamais modifier** `models.py`, `views.py`, `settings.py`, `urls.py`, `celery.py`, `tasks.py`
+- **Jamais changer** les signatures des fonctions publiques exportées
+- **Jamais** `shell=True` dans subprocess
+- **Toujours** `Path` pour les chemins, jamais strings hardcodées
+- **Toujours typer** les nouveaux paramètres
+- **Rollback immédiat** si T01 ou T08 régressent de > 5 points
 - **Maximum 2 fichiers modifiés par itération**
-- Les seuls fichiers de service modifiables : `previews.py`, `png_processing.py`, `svg_utils.py`, `thread_color.py`, `pdf_processing.py`, `inkstitch.py`, `validation.py`
+- Fichiers modifiables : `previews.py`, `png_processing.py`, `svg_utils.py`, `thread_color.py`, `pdf_processing.py`, `inkstitch.py`, `validation.py`
 
-### Candidats connus (à re-évaluer à chaque session)
+### Candidats fixes par étape de pipeline
 
-Ces candidats viennent des sessions précédentes. Ils peuvent être déjà résolus — toujours vérifier dans le code avant de les proposer. **Ne pas retenter** les approches marquées ❌ dans `docs/converter-memory.md` section "Ce qui a été tenté et n'a PAS fonctionné".
+#### Étape VECT (PNG→SVG vectorisation)
+| Candidat | Fichier | Fonction | Tests | Risque |
+|----------|---------|----------|-------|--------|
+| corner_threshold VTracer adaptatif n_colors | `png_processing.py` | `_vectorize_vtracer_cli()` | T02/T03/T06 | Faible |
+| filter_micro_paths proportionnel taille design | `svg_utils.py` | `filter_micro_paths()` | T03/T04 | Moyen |
+| Seuil clustering Lab adaptatif | `png_processing.py` | `_consolidate_svg_colors()` | T03/T11 | Faible |
 
-| Candidat | Fichier | Fonction | Tests concernés | Risque |
-|----------|---------|----------|-----------------|--------|
-| snap couleurs Lab : améliorer sélection fil Brother | `thread_color.py` | `snap_svg_colors_to_brother_palette()` | T01 (color_fidelity=66) | Faible |
-| VTracer corner_threshold adaptatif selon n_colors | `png_processing.py` | `_vectorize_vtracer_cli()` | T02/T03/T06 | Faible |
-| filter_micro_paths proportionnel à la taille design | `svg_utils.py` | `filter_micro_paths()` | T03/T04 | Moyen |
-| reorder_svg_paths TSP-greedy amélioré | `svg_utils.py` | `reorder_svg_paths_for_minimal_jumps()` | T05 (jumps 2.1%) | Élevé |
+#### Étape SVG_PREP (préparation SVG pour Ink/Stitch)
+| Candidat | Fichier | Fonction | Tests | Risque |
+|----------|---------|----------|-------|--------|
+| Injection namespace xmlns:inkstitch | `svg_utils.py` | `inject_inkstitch_namespace()` (à créer) | Tous PNG/PDF | Faible |
+| Fix remove_background_fill rectangles arrondis | `svg_utils.py` | `remove_background_fill()` | T02/T03/T06 | Moyen |
+| Fermeture paths non fermés | `svg_utils.py` | `_close_open_paths()` (à créer) | T09/T10 | Faible |
+| Injection params Ink/Stitch selon taille zone | `svg_utils.py` | `inject_inkstitch_params()` (à créer) | Tous raster | Moyen |
 
----
+#### Étape SCORING (calibration)
+| Candidat | Fichier | Fonction | Tests | Risque |
+|----------|---------|----------|-------|--------|
+| T03 : force_max_svg_colors(8) si n_colors≥10 | `svg_utils.py` / `tasks.py` | `force_max_svg_colors()` | T03 | Moyen |
+| T11/T14 : debug couleurs perdues PDF vectoriel | `pdf_processing.py` | pipeline PDF | T11/T14 | Moyen |
 
-## Mapping des 14 tests de référence
-
-Ces tests sont codés en dur dans `tests/run_benchmark.py`. Ne pas les modifier sans raison — ils définissent la baseline inter-sessions.
-
-| ID | Fichier (tests/manual/) | Format | Paramètres | Niveau | Cas testé |
-|----|------------------------|--------|------------|--------|-----------|
-| T01 | png/06-logo-monochrome-blanc.png | PNG | n=2, remove_bg, width=80mm | Medium | Logo mono blanc fond transparent |
-| T02 | png/03-logo-multicolore.png | PNG | n=5, width=80mm | Easy-Medium | Logo multi-couleurs plats |
-| T03 | png/07-ecusson-12couleurs.png | PNG | n=10, width=100mm | Hard | Écusson 12 couleurs complexe |
-| T04 | png/08-texte-fond-colore.png | PNG | n=4, width=60mm | Medium | Texte sur fond coloré |
-| T05 | png/09-photo-complexe-bruit.png | PNG | n=8, remove_bg, width=100mm | Hard/Ceiling | Photo avec bruit (ceiling naturel) |
-| T06 | jpeg/12-logo-formes-simple.jpg | JPEG | n=6, width=80mm | Easy-Medium | Logo géométrique JPEG |
-| T07 | webp/test-logo.webp | WebP | n=5, width=80mm | Easy-Medium | Logo WebP |
-| T08 | svg/01-circle-simple.svg | SVG | direct, width=80mm | Easy | SVG trivial **(anti-régression, doit = 100)** |
-| T09 | svg/07-logo-atelier-8couleurs.svg | SVG | direct, width=100mm | Medium | SVG multi-couleurs |
-| T10 | svg/06-text-outline.svg | SVG | direct, width=80mm | Medium | Texte en contours fins SVG |
-| T11 | pdf/test-logo.pdf | PDF | n=6, width=100mm | Medium | PDF vectoriel simple |
-| T12 | pdf/test-scanned-pdf.pdf | PDF | n=4, width=80mm | Medium | PDF scanné (raster) |
-| T13 | svg/08-texte-fin-contours.svg | SVG | direct, width=60mm | Hard | Texte très fin contours (lisibilité machine) |
-| T14 | pdf/test-vectoriel-complexe.pdf | PDF | n=6, width=120mm | Hard | PDF vectoriel complexe grand format |
-
-**Tests anti-régression prioritaires :** T01 (min=86) et T08 (doit=100) — un fix qui les dégrade de >5 pts doit être rollbacké immédiatement.
-**T05 = ceiling naturel** : photo complexe avec bruit, plafond algorithmique — ne pas s'acharner.
+**Ne jamais retenter :**
+- Coefficient color_fidelity 1.5 (durcirait scores sans améliorer qualité réelle)
+- Algorithme TSP pour jumps T05 (ceiling naturel photo)
+- Fix thread_color.py pour T01 ΔLab=28.4 (lacune physique palette Brother)
 
 ---
 
-## Phase 5 — Mise à jour de docs/converter-memory.md
+## Phase 6 — Ajout de nouveaux tests (si décidé en Phase 0b)
 
-Après les cycles d'amélioration, mettre à jour `docs/converter-memory.md` :
+Si l'utilisateur a signalé des fichiers ratés → proposer de les ajouter au benchmark :
 
-### 5a. Ajouter une ligne au tableau des sessions
-
-```markdown
-| <N> | <YYYY-MM-DD> | <score_avant>/100 | <score_après>/100 | <delta signé> | 67.5/100 |
+```python
+# Template d'ajout dans run_benchmark.py
+TestCase(
+    id="T21",
+    file="tests/manual/niveau2/logo/mon-logo-rate.png",
+    format="PNG",
+    params={"n_colors": 4, "target_width_mm": 80},
+    niveau="Medium",
+    description="Logo signalé raté par l'utilisateur — fond arrondi tatami",
+    min_score=75,  # Objectif minimal réaliste
+),
 ```
 
-### 5b. Ajouter une section "### Session N — YYYY-MM-DD"
+**Règles d'ajout :**
+- Toujours inclure un `min_score` réaliste (pas 95 pour un cas Hard)
+- Copier le fichier dans `tests/manual/niveau{1,2,3}/` selon la difficulté estimée
+- Maximum 2 nouveaux tests par session (éviter de diluer le score moyen)
+- Lancer le benchmark complet après ajout pour mesurer l'impact sur le score moyen
 
-Format à respecter :
+---
 
+## Phase 7 — Mise à jour de docs/converter-memory.md
+
+### 7a. Tableau des sessions
+```markdown
+| <N> | <YYYY-MM-DD> | <score_avant>/100 | <score_après>/100 | <delta signé> | <nb tests> |
+```
+
+### 7b. Section "### Session N — YYYY-MM-DD"
 ```markdown
 ### Session N — YYYY-MM-DD
 
+**Étape ciblée : [VECT / SVG_PREP / INK_STITCH / SCORING]**
+
 **Iter 1 — <titre court>** (`<fichier modifié>`)
-- Correction : <description précise du changement>
-- Raison : <pourquoi ce changement améliore la qualité broderie>
+- Correction : <description précise>
+- Raison : <pourquoi ça améliore la qualité broderie>
+- Étape pipeline : [VECT / SVG_PREP / INK_STITCH / SCORING]
 - Impact mesuré : <TXX score_avant→score_après (+delta)>
-
-**Iter 2 — ...**
-...
-
-**Iter 3 — ...**
-...
 ```
 
-Si une itération était neutre (pas de gain mesuré), noter quand même avec "Impact mesuré : neutre — <explication>".
+### 7c. Mettre à jour "Problèmes connus non résolus"
+- Retirer les problèmes résolus
+- Ajouter les nouveaux découverts avec leur étape pipeline
+- Mettre à jour les scores
 
-### 5c. Mettre à jour la section "Problèmes connus non résolus"
-
-- Retirer les problèmes effectivement résolus dans cette session
-- Ajouter les nouveaux problèmes découverts
-- Mettre à jour les scores si des tests ont changé
-
-### 5d. Mettre à jour la section "Prochaines priorités"
-
-Lister les 3 meilleurs candidats pour la prochaine session, en ordre de ROI.
-
-### 5e. Mettre à jour le tableau "Résultats détaillés"
-
-Ajouter une colonne "Score session N" avec les nouveaux scores, ou créer un nouveau sous-tableau.
-
-### 5f. Mettre à jour la section [LIRE EN PREMIER] de docs/converter-memory.md
-
-- Mettre à jour **Score actuel** et la date de dernière session
-- Mettre à jour **Prochaines priorités** (3 meilleurs candidats pour la prochaine session, en ordre de ROI)
-- Ajouter à **Ce qui a été tenté et n'a PAS fonctionné** si une nouvelle approche a échoué cette session
+### 7d. Mettre à jour [LIRE EN PREMIER]
+- Score actuel + date
+- Prochaines priorités (3 candidats, avec étape pipeline)
+- Ce qui n'a pas fonctionné (si nouvelle tentative échouée)
 
 ---
 
 ## Rapport final obligatoire
-
-À la toute fin de la session, afficher ce bloc en texte brut dans ta réponse :
 
 ```
 ═══════════════════════════════════════════════════
@@ -245,64 +334,64 @@ Ajouter une colonne "Score session N" avec les nouveaux scores, ou créer un nou
   Delta                      :  +X.X pts
 
   Score visé (objectif long terme) : 95.0 / 100
-  Écart restant                    : X.X pts
+  Objectif atteint : OUI / NON (écart : X.X pts)
 
-  Ceiling théorique auto-digitizing : 67.5 / 100
-  Note : notre score dépasse le ceiling car les fichiers
-  de test sont des designs simples à intermédiaires.
+  Étapes pipeline travaillées cette session :
+    VECT      : X fix(es)
+    SVG_PREP  : X fix(es)
+    SCORING   : X fix(es)
 
   Tests améliorés  : TXX (+N), TXX (+N), ...
   Tests stables    : TXX, TXX, ...
-  Tests régressés  : aucun  (ou détail si regression)
+  Tests régressés  : aucun (ou détail si régression)
 
   Fixes appliqués :
-    Iter 1 : <titre> → fichier.py
-    Iter 2 : <titre> → fichier.py
-    Iter 3 : <titre> → fichier.py
+    Iter 1 [ÉTAPE] : <titre> → fichier.py
+    Iter 2 [ÉTAPE] : <titre> → fichier.py
+    Iter 3 [ÉTAPE] : <titre> → fichier.py
 
   Prochaines priorités :
-    1. <priorité 1>
-    2. <priorité 2>
-    3. <priorité 3>
+    1. [ÉTAPE] <priorité 1>
+    2. [ÉTAPE] <priorité 2>
+    3. [ÉTAPE] <priorité 3>
 ═══════════════════════════════════════════════════
 ```
-
-**Score visé = 95.0/100** sur les 12 tests de référence (objectif stable à long terme).
-C'est le plafond réaliste pour un convertisseur automatique sur des designs simples à intermédiaires.
 
 ---
 
 ## Vérifications finales
 
 ```bash
-# Syntaxe Python
+# Windows
+.venv\Scripts\python.exe -m ruff check src/conversions/services/
+.venv\Scripts\python.exe src/manage.py test conversions -v 0
+.venv\Scripts\python.exe tests/run_benchmark.py
+
+# macOS
 source .venv/bin/activate
 ruff check src/conversions/services/
-
-# Tests unitaires complets
 python src/manage.py test conversions -v 0
-
-# Benchmark final complet (12 tests)
 python tests/run_benchmark.py
 ```
 
-Si les tests unitaires régressent après une modification → rollback de la modification concernée.
+Si les tests unitaires régressent → rollback du fix concerné.
+
+---
+
+## Contexte machine broderie (référence)
+
+**Brother entrepreneur pro X PR1050X** (machine beta) :
+- 10 aiguilles max (≤10 fils, idéal ≤7)
+- Zone broderie : 360×200mm
+- Format natif : PES v1
+- Points max : < 500 000
+
+**Contraintes adaptées au profil machine** (Phase 13a) :
+- Si l'utilisateur a configuré sa machine → utiliser ses contraintes
+- Sinon → Brother PR1050X par défaut
 
 ---
 
 ## Règle ROADMAP.md
 
-À la toute fin, vérifier si des éléments dans `ROADMAP.md` peuvent être cochés suite au travail de cette session. Si oui, les cocher.
-
----
-
-## Contexte machine broderie
-
-**Brother entrepreneur pro X PR1050X** :
-- 10 aiguilles maximum (≤10 fils distincts par design, idéal ≤7)
-- Zone broderie max : 360×200mm
-- Format natif : PES v1
-- Points max recommandés : < 500 000
-- Un design avec > 10 couleurs est physiquement impossible sans intervention humaine
-
-Tout fix doit être évalué à l'aune de ces contraintes réelles — l'objectif n'est pas un score parfait sur le benchmark mais des fichiers PES utilisables sur la machine.
+À la fin, vérifier si des éléments de `docs/ROADMAP.md` peuvent être cochés. Si oui, les cocher.

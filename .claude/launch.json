@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "django",
-      "runtimeExecutable": "/Users/hugobonnet/Developer/StitchFlow/.venv/bin/python",
-      "runtimeArgs": ["/Users/hugobonnet/Developer/StitchFlow/src/manage.py", "runserver", "8001", "--noreload"],
+      "runtimeExecutable": "C:\\Users\\hugob\\Desktop\\Developer\\StichFlow\\.venv\\Scripts\\python.exe",
+      "runtimeArgs": ["C:\\Users\\hugob\\Desktop\\Developer\\StichFlow\\src\\manage.py", "runserver", "8001", "--noreload"],
       "port": 8001
     }
   ]

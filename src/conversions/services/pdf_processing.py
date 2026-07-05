@@ -14,6 +14,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 _SVG_NS = "http://www.w3.org/2000/svg"
+_PT_TO_MM = 25.4 / 72
 
 
 class PDFExtractionError(Exception):
@@ -102,17 +103,61 @@ def is_vector_pdf_svg(svg_path: Path) -> bool:
         return False
 
 
+def normalize_svg_dimensions_to_mm(svg_path: Path) -> tuple[float, float] | None:
+    """
+    pdftocairo émet width/height sans unité (ex : `width="225"`) — convention poppler :
+    ce sont des points PDF (1/72 in), pas des pixels CSS. Sans cette normalisation,
+    `_parse_length_mm` (svg_utils.py) traite un nombre sans unité comme des px (96 dpi),
+    ce qui fausse silencieusement la taille physique du design de ~25% (72 vs 96 dpi)
+    dès que l'utilisateur ne fixe pas de largeur cible explicite.
+
+    Réécrit width/height en mm explicites en place (viewBox inchangé — le ratio
+    unité-utilisateur → mm reste cohérent pour Ink/Stitch et scale_svg_to_width_mm).
+
+    Retourne (width_mm, height_mm) ou None si les attributs sont absents/déjà unitisés.
+    """
+    ET.register_namespace("", _SVG_NS)
+    ET.register_namespace("xlink", "http://www.w3.org/1999/xlink")
+
+    try:
+        tree = ET.parse(svg_path)
+        root = tree.getroot()
+    except ET.ParseError:
+        return None
+
+    w_raw = root.get("width", "").strip()
+    h_raw = root.get("height", "").strip()
+    m_w = re.match(r"^([0-9.]+)$", w_raw)
+    m_h = re.match(r"^([0-9.]+)$", h_raw)
+    if not (m_w and m_h):
+        return None
+
+    width_mm = round(float(m_w.group(1)) * _PT_TO_MM, 2)
+    height_mm = round(float(m_h.group(1)) * _PT_TO_MM, 2)
+    root.set("width", f"{width_mm}mm")
+    root.set("height", f"{height_mm}mm")
+    tree.write(svg_path, encoding="unicode", xml_declaration=True)
+    logger.info(
+        "[pdf] dimensions normalisées : %spt×%spt → %smm×%smm",
+        m_w.group(1), m_h.group(1), width_mm, height_mm,
+    )
+    return width_mm, height_mm
+
+
 def postprocess_vector_svg(svg_path: Path) -> None:
     """
     Prépare le SVG vectoriel extrait d'un PDF pour Ink/Stitch :
-    1. Détecte les dégradés (non brodables) → GradientNotSupportedError
-    2. Supprime les strokes (évite des satin-stitches parasites sur les contours)
-    3. Simplifie les nœuds via Inkscape pour réduire la densité de points
+    1. Normalise width/height (points poppler → mm explicites)
+    2. Détecte les dégradés (non brodables) → GradientNotSupportedError
+    3. Supprime les strokes (évite des satin-stitches parasites sur les contours)
+    4. Simplifie les nœuds via Inkscape pour réduire la densité de points
 
     Modifie le fichier en place.
     """
     ET.register_namespace("", _SVG_NS)
     ET.register_namespace("xlink", "http://www.w3.org/1999/xlink")
+
+    normalize_svg_dimensions_to_mm(svg_path)
 
     try:
         tree = ET.parse(svg_path)
@@ -264,7 +309,9 @@ def _simplify_pdf_svg(svg_path: Path) -> None:
     Réduit le nombre de nœuds via Inkscape object-to-path + path-simplify.
     Silencieux en cas d'échec : le SVG original reste utilisable.
     """
-    inkscape = shutil.which("inkscape")
+    from .svg_utils import find_inkscape
+
+    inkscape = find_inkscape()
     if not inkscape:
         return
 
