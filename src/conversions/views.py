@@ -2,6 +2,7 @@ import csv
 import json
 import shutil
 import tempfile
+import threading
 from collections import Counter
 from pathlib import Path
 
@@ -50,7 +51,7 @@ class UnifiedUploadView(View):
             if excluded_colors_raw:
                 job.conversion_metadata = {'excluded_colors': excluded_colors_raw}
                 job.save(update_fields=['conversion_metadata'])
-            process_conversion_job.delay(str(job.id))
+            threading.Thread(target=process_conversion_job, args=[str(job.id)], daemon=True).start()
             messages.success(request, 'Fichier reçu. La conversion est en cours.')
             return redirect(reverse('conversions:detail', kwargs={'pk': job.id}))
 
@@ -140,7 +141,7 @@ class UploadView(CreateView):
             self.object.original_filename = original_stem
             self.object.save(update_fields=['original_filename'])
 
-        process_conversion_job.delay(str(self.object.id))
+        threading.Thread(target=process_conversion_job, args=[str(self.object.id)], daemon=True).start()
         messages.success(self.request, 'Fichier reçu. La conversion est en cours.')
         return response
 
@@ -162,7 +163,7 @@ class UploadPNGView(CreateView):
         self.object.save(update_fields=[
             'original_filename', 'n_colors', 'remove_background',
         ])
-        process_conversion_job.delay(str(self.object.id))
+        threading.Thread(target=process_conversion_job, args=[str(self.object.id)], daemon=True).start()
         messages.success(self.request, 'Image reçue. La conversion est en cours.')
         return response
 
@@ -184,7 +185,7 @@ class UploadPDFView(CreateView):
         self.object.save(update_fields=[
             'original_filename', 'n_colors', 'remove_background',
         ])
-        process_conversion_job.delay(str(self.object.id))
+        threading.Thread(target=process_conversion_job, args=[str(self.object.id)], daemon=True).start()
         messages.success(self.request, 'PDF reçu. La conversion est en cours.')
         return response
 
@@ -283,7 +284,7 @@ class ReconvertView(View):
                 new_job.original_file = new_name
                 new_job.save(update_fields=['original_file'])
 
-        process_conversion_job.delay(str(new_job.id))
+        threading.Thread(target=process_conversion_job, args=[str(new_job.id)], daemon=True).start()
         return redirect('conversions:detail', pk=new_job.id)
 
 
@@ -1050,7 +1051,7 @@ class SvgValidateView(View):
 
         job.status = ConversionJob.Status.PENDING
         job.save(update_fields=['status', 'updated_at'])
-        finalize_svg_to_pes.delay(str(job.id))
+        threading.Thread(target=finalize_svg_to_pes, args=[str(job.id)], daemon=True).start()
 
         html = render_to_string(
             'conversions/partials/conversion_status.html',

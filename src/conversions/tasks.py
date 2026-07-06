@@ -3,7 +3,6 @@ import shutil
 import time
 from pathlib import Path
 
-from celery import shared_task
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
@@ -219,8 +218,7 @@ def _run_svg_to_pes_pipeline(job, source_svg_path: Path, start_time: float | Non
             scaled_svg_path.unlink(missing_ok=True)
 
 
-@shared_task(bind=True, max_retries=0)
-def process_conversion_job(self, job_id: str) -> None:
+def process_conversion_job(job_id: str) -> None:
     """
     Tâche Celery principale : vectorise le fichier source et sauvegarde le SVG intermédiaire.
     Pour les formats raster, s'arrête en AWAITING_SVG_VALIDATION pour que l'utilisateur
@@ -403,8 +401,7 @@ def process_conversion_job(self, job_id: str) -> None:
             tmp_svg_path.unlink(missing_ok=True)
 
 
-@shared_task(bind=True, max_retries=0)
-def finalize_svg_to_pes(self, job_id: str) -> None:
+def finalize_svg_to_pes(job_id: str) -> None:
     """
     Tâche Celery de finalisation : reprend le pipeline SVG→PES depuis vectorized_svg_file.
     Déclenchée par SvgValidateView après validation utilisateur de l'éditeur SVG.

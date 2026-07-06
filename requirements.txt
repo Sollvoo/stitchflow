@@ -7,10 +7,6 @@ python-decouple>=3.8
 dj-database-url>=2.0
 django-vite>=3.0
 
-# Celery + Redis
-celery[redis]>=5.3
-redis>=5.0
-
 # Broderie
 pyembroidery>=1.5
 

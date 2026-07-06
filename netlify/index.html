@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StitchFlow — App de broderie numérique</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f0f1a;
+      --card: #1a1a2e;
+      --border: #2d2d4a;
+      --purple: #a78bfa;
+      --pink: #f472b6;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --green: #34d399;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      gap: 48px;
+    }
+
+    header { text-align: center; }
+
+    .logo {
+      font-size: clamp(2rem, 8vw, 3.5rem);
+      font-weight: 800;
+      letter-spacing: -2px;
+      color: var(--purple);
+    }
+    .logo span { color: var(--pink); }
+
+    .tagline {
+      margin-top: 12px;
+      font-size: 1.1rem;
+      color: var(--muted);
+      max-width: 480px;
+    }
+
+    .features {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      justify-content: center;
+      max-width: 700px;
+    }
+
+    .feature {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 20px;
+      width: 200px;
+      text-align: center;
+    }
+    .feature .icon { font-size: 1.8rem; margin-bottom: 8px; }
+    .feature .label { font-size: 0.85rem; color: var(--muted); }
+
+    .download-section { text-align: center; }
+
+    .btn-download {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: linear-gradient(135deg, var(--purple), var(--pink));
+      color: white;
+      font-size: 1.1rem;
+      font-weight: 600;
+      padding: 16px 36px;
+      border-radius: 50px;
+      text-decoration: none;
+      transition: opacity 0.2s, transform 0.1s;
+      box-shadow: 0 8px 32px rgba(167, 139, 250, 0.3);
+    }
+    .btn-download:hover { opacity: 0.9; transform: translateY(-2px); }
+    .btn-download:active { transform: translateY(0); }
+
+    .version-tag {
+      margin-top: 10px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .requirements {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px 28px;
+      max-width: 500px;
+      width: 100%;
+    }
+    .requirements h3 {
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+    .req-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+    .req-item:last-child { border-bottom: none; }
+    .req-item .status { color: var(--green); flex-shrink: 0; }
+    .req-item .req-text { color: var(--text); }
+    .req-item .req-note { color: var(--muted); font-size: 0.8rem; }
+
+    .install-note {
+      margin-top: 12px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.5;
+    }
+    .install-note a { color: var(--purple); }
+
+    footer {
+      font-size: 0.75rem;
+      color: var(--border);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo">Stitch<span>Flow</span></div>
+    <p class="tagline">Convertissez vos fichiers SVG, PNG et PDF en fichiers de broderie pour votre machine Brother.</p>
+  </header>
+
+  <div class="features">
+    <div class="feature">
+      <div class="icon">🖼️</div>
+      <div class="label">SVG, PNG, JPEG, PDF, WebP → PES, DST, JEF</div>
+    </div>
+    <div class="feature">
+      <div class="icon">🎨</div>
+      <div class="label">Éditeur couleurs & densité intégré</div>
+    </div>
+    <div class="feature">
+      <div class="icon">🧵</div>
+      <div class="label">Palette fils Brother automatique</div>
+    </div>
+  </div>
+
+  <div class="download-section">
+    <a class="btn-download" href="https://github.com/Sollvoo/stitchflow-desktop/releases/latest/download/StitchFlow.dmg" id="download-btn">
+      ⬇️ &nbsp;Télécharger pour Mac
+    </a>
+    <div class="version-tag" id="version-tag">macOS Apple Silicon &amp; Intel · Gratuit</div>
+  </div>
+
+  <div class="requirements">
+    <h3>Prérequis d'installation</h3>
+    <div class="req-item">
+      <span class="status">✓</span>
+      <div>
+        <div class="req-text">macOS 12 ou plus récent</div>
+      </div>
+    </div>
+    <div class="req-item">
+      <span class="status">✓</span>
+      <div>
+        <div class="req-text">Python 3.11+</div>
+        <div class="req-note">Vérifiez avec : python3 --version dans le Terminal</div>
+      </div>
+    </div>
+    <div class="req-item">
+      <span class="status">⚙️</span>
+      <div>
+        <div class="req-text">Ink/Stitch (extension Inkscape)</div>
+        <div class="req-note">À installer une seule fois — des instructions sont fournies dans l'app</div>
+      </div>
+    </div>
+    <p class="install-note">
+      Après téléchargement du .dmg, faites <strong>clic droit → Ouvrir</strong> (et non double-clic)<br>
+      pour contourner le message de sécurité macOS la première fois.<br>
+      <a href="https://github.com/Sollvoo/stitchflow-desktop#installation" target="_blank">Voir le guide complet →</a>
+    </p>
+  </div>
+
+  <footer>StitchFlow Desktop · <a href="https://github.com/Sollvoo/stitchflow-desktop" style="color:inherit">GitHub</a></footer>
+
+</body>
+</html>

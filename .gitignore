@@ -49,6 +49,10 @@ htmlcov/
 # Binaires vendored (volumineux, télécharger via setup)
 vendor/vtracer
 vendor/vtracer.exe
+vendor/poppler-*/
+
+# Electron builder output
+out/
 
 # Résultats de tests manuels (générés, pas de source)
 tests/results/

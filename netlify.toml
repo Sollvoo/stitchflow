@@ -1,0 +1,3 @@
+[build]
+  publish = "netlify"
+  ignore = "exit 0"
