@@ -16,22 +16,22 @@ Ce fichier trace ce qu'il reste à faire pour passer de la base initiale à une 
 - [x] `src/stitchflow/__init__.py` — import Celery retiré
 - [x] `requirements.txt` — Celery/Redis retirés
 - [x] `netlify/index.html` — landing page de téléchargement
-- [x] Repo GitHub créé : https://github.com/Sollvoo/stitchflow-desktop
-- [x] Premier commit pushé
+- [x] Repo GitHub créé (maintenant supprimé — code fusionné dans StitchFlow)
+- [x] Monorepo : fusionné dans https://github.com/Sollvoo/stitchflow (juillet 2026)
 
 ---
 
 ## 🔧 À faire — MVP fonctionnel
 
 ### Setup Python
-- [ ] Créer le venv dans `stitchflow-desktop/` : `python3 -m venv .venv`
-- [ ] Installer les dépendances : `.venv/bin/pip install -r requirements.txt`
-- [ ] Tester le démarrage Django manuel : `DJANGO_SETTINGS_MODULE=stitchflow.settings_desktop python src/manage.py runserver 127.0.0.1:8765`
+- [x] venv à `.venv/` à la racine StitchFlow — prêt
+- [x] `python src/manage.py check --settings=stitchflow.settings_desktop` → 0 erreur
+- [x] `python src/manage.py migrate --settings=stitchflow.settings_desktop` → OK
 
 ### Setup Electron
-- [ ] Installer les dépendances Node : `npm install`
-- [ ] Tester le lancement : `npm start` → Electron doit ouvrir StitchFlow
-- [ ] Vérifier que Django démarre correctement depuis Electron (splash → app)
+- [x] `npm install` depuis la racine StitchFlow → node_modules créé
+- [x] `npm start` démarre sans erreur (testé sur Windows)
+- [ ] Vérifier sur Mac que Django démarre et l'app charge correctement
 
 ### Build Vite
 - [ ] Installer les dépendances frontend : `cd src/frontend && npm install`
@@ -39,8 +39,8 @@ Ce fichier trace ce qu'il reste à faire pour passer de la base initiale à une 
 - [ ] Vérifier que `src/frontend/static/dist/.vite/manifest.json` existe
 
 ### Migrations
-- [ ] Lancer les migrations : `DJANGO_SETTINGS_MODULE=stitchflow.settings_desktop python src/manage.py migrate`
-- [ ] Vérifier que la DB SQLite se crée dans `~/Library/Application Support/StitchFlow/`
+- [x] Migrations appliquées avec settings_desktop — OK
+- [ ] Vérifier que la DB SQLite se crée dans `~/Library/Application Support/StitchFlow/` (Mac)
 
 ### Test pipeline complet
 - [ ] Uploader un SVG → vérifier la conversion et le téléchargement PES

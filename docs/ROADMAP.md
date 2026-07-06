@@ -264,9 +264,9 @@ Objectif : corriger les problèmes structurels entre la vectorisation SVG et la 
 
 ## Phase 9 — Authentification & comptes utilisateurs ✅
 
-Objectif : ouvrir l'outil à plusieurs utilisateurs avec des comptes distincts. Prérequis pour la beta fermée et le SaaS.
+Objectif : ouvrir l'outil à plusieurs utilisateurs avec des comptes distincts. Prérequis pour le SaaS — **non utilisé dans la version desktop** (utilisatrice unique, pas d'auth).
 
-> C'est la phase la plus courte techniquement (~1 semaine) mais elle débloque tout : historique personnel, quota, paiement futur.
+> Code présent et fonctionnel, simplement inactif en mode desktop (settings_desktop.py).
 
 - [x] Auth Django basique : app `users/` avec `LoginView`, `SignUpView`, `LogoutView`, `ProfileView` — email comme identifiant (username=email), compte activé immédiatement
 - [x] Formulaires : `EmailLoginForm` (lookup User par email + authenticate), `SignUpForm` (validation email unique + mdp), `ProfileForm` (prénom/nom)
@@ -329,10 +329,50 @@ Objectif : passer de l'éditeur léger (supprimer/fusionner/recolorer) à un con
 
 ---
 
-## Phase 12 — SaaS & monétisation
+## Phase 12 — Application Desktop ✅ (base)
 
-Objectif : transformer l'outil en service commercial. La beta a validé la valeur, il faut maintenant la monétiser.
+Objectif : transformer StitchFlow en application desktop Mac (ARM64 prioritaire, Intel + Windows ensuite) pour la remettre à une utilisatrice sans frais d'hébergement. Si le produit est validé, retour au SaaS web.
 
+> **Stratégie** : desktop d'abord pour valider le produit sur le terrain, SaaS ensuite si succès confirmé.
+> **Architecture** : monorepo — Electron + Django bundlé dans un seul repo StitchFlow, aucune duplication de code.
+
+### 12a — Infrastructure Electron + Django ✅ (base posée)
+
+- [x] `electron/main.js` — process manager : spawn Django, BrowserWindow, splash screen, vérif dépendances
+- [x] `electron/preload.js` + `electron/splash.html` + `electron/error.html`
+- [x] `src/stitchflow/settings_desktop.py` — overrides : MEDIA_ROOT + DB dans `~/Library/Application Support/StitchFlow/`, sans Redis/Celery
+- [x] `src/conversions/tasks.py` — décorateurs `@shared_task` retirés (fonctions Python pures)
+- [x] `src/conversions/views.py` — `.delay()` remplacé par `threading.Thread(daemon=True)`
+- [x] `src/stitchflow/celery.py` supprimé, `__init__.py` nettoyé, Celery/Redis retirés de `requirements.txt`
+- [x] `scripts/check_deps.py` — vérification Ink/Stitch, Poppler, Python au démarrage, dialog si manquant
+- [x] `package.json` — Electron 36 + electron-builder 25, scripts `build:mac-arm`, `build:mac-intel`, `build:win`
+- [x] `.github/workflows/build.yml` — CI GitHub Actions : build .dmg Mac ARM64/Intel + .exe Windows sur tag `v*.*.*`
+- [x] `netlify/index.html` — landing page de téléchargement (Netlify gratuit, bouton → GitHub Release)
+- [x] `MIGRATION.md` — checklist complète des tâches restantes
+
+### 12b — Tests & polish desktop (à faire)
+
+- [ ] Tester `npm start` sur Mac Apple Silicon — vérifier splash → app → conversion complète
+- [ ] Créer l'icône `assets/icon.icns` (1024×1024 PNG → .icns) et `assets/icon.ico` (Windows)
+- [ ] Builder et tester le `.dmg` Mac ARM64 : `npm run build:mac-arm`
+- [ ] Déployer la landing page Netlify (brancher `Sollvoo/stitchflow` sur app.netlify.com, publish dir: `netlify/`)
+- [ ] Pousser le tag `v1.0.0` → GitHub Actions génère les .dmg et .exe automatiquement
+- [ ] Tester l'installation depuis le .dmg sur Mac Apple Silicon (Clic droit → Ouvrir pour contourner Gatekeeper)
+- [ ] Vérifier le pipeline complet en mode desktop : SVG → PES, PNG → PES, HTMX polling
+
+### 12c — Distribution & livraison (à faire)
+
+- [ ] Partager le lien Netlify avec l'utilisatrice (pas de compte requis pour télécharger)
+- [ ] Tester sur Mac Intel (build `npm run build:mac-intel`)
+- [ ] Tester sur Windows (via GitHub Actions CI)
+
+---
+
+## Phase 13 — SaaS & monétisation
+
+Objectif : transformer l'outil en service commercial si la version desktop valide le produit avec l'utilisatrice cible.
+
+> **Prérequis** : Phase 12 livrée et testée sur le terrain. Si retours positifs → retour au web + monétisation.
 > **Positionnement** : €3/conversion recommandé (vs €10 prestataire). Cible : artisanes et ateliers indépendants.
 > **Stratégie complète** : voir `docs/strategie-marketing.md`
 
@@ -369,11 +409,11 @@ Objectif : transformer l'outil en service commercial. La beta a validé la valeu
 
 ---
 
-## Phase 13 — Multi-machines & détection de complexité
+## Phase 14 — Multi-machines & détection de complexité
 
 Objectif : étendre le marché au-delà de la machine Brother, et être honnête sur les limites de l'outil.
 
-### 13a — Profil machine utilisateur (initialisation) — PRIORITÉ AVANT PHASE 12
+### 14a — Profil machine utilisateur (initialisation) — PRIORITÉ AVANT PHASE 13
 
 Objectif : stocker la machine de l'utilisateur dans son profil et adapter toutes les contraintes en conséquence. Essentiel pour accueillir plusieurs beta users avec des machines différentes dès l'ouverture.
 
@@ -395,17 +435,17 @@ Objectif : stocker la machine de l'utilisateur dans son profil et adapter toutes
 - [x] Jobs anonymes : défauts PR1050X (décision utilisateur)
 - [x] Export multi-format : `convert_pes_to_format()` (pyembroidery) si `machine_format != PES` — le PES reste la source de vérité preview/métadonnées (DST ne stocke pas les couleurs)
 
-### 13b — Détection de complexité ✅ (base)
+### 14b — Détection de complexité ✅ (base)
 
 - [x] **Détection de complexité** dans l'analyse pré-conversion : photo réaliste (ratio couleurs uniques >0.25 sur miniature 256px → badge rouge "recommander un prestataire"), dégradés (top 8 couleurs <40% des pixels → badge rouge), >15 couleurs → badge orange "qualité non garantie". Seuils mesurés sur tests/ réels — la variance locale était inutilisable (bords nets des logos ≈ 1100+).
 - [ ] Support Brother multi-modèles supplémentaires (PR680W, PR1055X, etc.)
 
-### 13c — API & intégrations (post-SaaS)
+### 14c — API & intégrations (post-SaaS)
 
 - [ ] API REST pour intégrations tierces (ateliers de broderie, e-commerce Shopify/WooCommerce)
 - [ ] Webhooks de notification (job terminé, erreur)
 
-### 13d — Barre de progression réelle & estimation fiable ✅
+### 14d — Barre de progression réelle & estimation fiable ✅
 
 Objectif : remplacer le spinner + barre indéterminée par un suivi réel de la conversion. Consultation `/stitch-advisor` : la promesse marketing "30 secondes" (`differenciateurs.md`) doit rester un plafond, pas une moyenne — cible P50 SVG ≤ 8s, P95 raster ≤ 15s.
 
