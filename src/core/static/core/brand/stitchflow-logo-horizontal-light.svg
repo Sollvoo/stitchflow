@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 232 52" width="232" height="52" role="img" aria-label="StitchFlow">
+  <title>StitchFlow</title>
+  <defs>
+    
+  </defs>
+  <g transform="translate(1,2) scale(0.5634)">
+    <path d="M 37,12 C 7,12 7,38 37,44 C 67,50 67,74 25,74" stroke="#FFFFFF" stroke-width="9" stroke-linecap="round" fill="none"></path>
+  </g>
+  <text x="54" y="38" font-family="&#39;Playfair Display&#39;, Georgia, serif" font-style="italic" font-size="32" fill="#FFFFFF">
+    <tspan font-weight="500">Stitch</tspan><tspan font-weight="400">Flow</tspan>
+  </text>
+</svg>

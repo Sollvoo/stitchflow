@@ -34,3 +34,4 @@ Seul ce fichier est chargé automatiquement. Les autres règles se chargent selo
 |---|---|---|---|
 | 05 | templates.md | Partials HTMX, AlpineJS, DaisyUI | `**/templates/**/*.html` |
 | 14 | htmx-alpinejs.md | Coordination HTMX/Alpine, polling Celery | `**/templates/**/*.html` |
+| 15 | design-system.md | Tokens CSS, composants sf-*, règles typo, skills recommandés | `**/templates/**/*.html`, `**/assets/*.css` |

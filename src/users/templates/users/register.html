@@ -1,86 +1,109 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="min-h-[70vh] flex items-center justify-center px-4 py-12">
-  <div class="card bg-base-100 shadow-lg w-full max-w-md">
-    <div class="card-body gap-5">
+<div class="min-h-[75vh] flex items-center justify-center px-4 py-12">
+  <div class="w-full max-w-sm">
 
-      <div class="text-center">
-        <div class="text-4xl mb-2">🧵</div>
-        <h1 class="text-xl font-bold">Créer un compte</h1>
+    <!-- Card principale -->
+    <div class="sf-panel overflow-hidden">
+
+      <!-- Header brandé -->
+      <div class="px-8 pt-8 pb-6 text-center border-b border-base-200">
+        <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4" style="background-color: color-mix(in oklab, var(--color-primary-500, #c45142) 12%, transparent); border: 1px solid color-mix(in oklab, var(--color-primary-500, #c45142) 20%, transparent)">
+          <span class="text-3xl leading-none">🧵</span>
+        </div>
+        <h1 class="font-display font-bold text-2xl text-base-content">Créer un compte</h1>
         <p class="text-sm text-base-content/50 mt-1">Gratuit, aucune carte requise</p>
       </div>
 
-      {% if form.non_field_errors %}
-      <div class="alert alert-error text-sm py-2">
-        {% for error in form.non_field_errors %}{{ error }}{% endfor %}
-      </div>
-      {% endif %}
+      <!-- Formulaire -->
+      <div class="px-8 py-6 flex flex-col gap-4">
 
-      <form method="post" class="flex flex-col gap-4">
-        {% csrf_token %}
+        {% if form.non_field_errors %}
+        <div class="alert alert-error text-sm py-2.5">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          {% for error in form.non_field_errors %}{{ error }}{% endfor %}
+        </div>
+        {% endif %}
 
-        <div class="grid grid-cols-2 gap-3">
-          <label class="form-control">
-            <div class="label pb-1"><span class="label-text text-sm font-medium">Prénom</span></div>
-            <input type="text" name="first_name" value="{{ form.first_name.value|default:'' }}"
-                   placeholder="Marie"
-                   autocomplete="given-name"
-                   class="input input-bordered w-full">
-          </label>
-          <label class="form-control">
-            <div class="label pb-1"><span class="label-text text-sm font-medium">Nom</span></div>
-            <input type="text" name="last_name" value="{{ form.last_name.value|default:'' }}"
-                   placeholder="Dupont"
-                   autocomplete="family-name"
-                   class="input input-bordered w-full">
-          </label>
+        <form method="post" class="flex flex-col gap-3.5">
+          {% csrf_token %}
+
+          <div class="grid grid-cols-2 gap-3">
+            <div class="flex flex-col gap-1">
+              <label class="text-sm font-medium text-base-content/80">Prénom</label>
+              <input type="text" name="first_name" value="{{ form.first_name.value|default:'' }}"
+                     placeholder="Marie"
+                     autocomplete="given-name"
+                     class="input input-bordered w-full">
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-sm font-medium text-base-content/80">Nom</label>
+              <input type="text" name="last_name" value="{{ form.last_name.value|default:'' }}"
+                     placeholder="Dupont"
+                     autocomplete="family-name"
+                     class="input input-bordered w-full">
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-1">
+            <label class="text-sm font-medium text-base-content/80">
+              Email <span class="text-error">*</span>
+            </label>
+            <input type="email" name="email" value="{{ form.email.value|default:'' }}"
+                   placeholder="votre@email.com"
+                   autocomplete="email"
+                   class="input input-bordered w-full {% if form.email.errors %}input-error{% endif %}">
+            {% if form.email.errors %}
+            <p class="text-xs text-error mt-0.5">{{ form.email.errors.0 }}</p>
+            {% endif %}
+          </div>
+
+          <div class="flex flex-col gap-1">
+            <label class="text-sm font-medium text-base-content/80">
+              Mot de passe <span class="text-error">*</span>
+            </label>
+            <input type="password" name="password1"
+                   placeholder="8 caractères minimum"
+                   autocomplete="new-password"
+                   class="input input-bordered w-full {% if form.password1.errors %}input-error{% endif %}">
+            {% if form.password1.errors %}
+            <p class="text-xs text-error mt-0.5">{{ form.password1.errors.0 }}</p>
+            {% endif %}
+          </div>
+
+          <div class="flex flex-col gap-1">
+            <label class="text-sm font-medium text-base-content/80">
+              Confirmer <span class="text-error">*</span>
+            </label>
+            <input type="password" name="password2"
+                   placeholder="••••••••"
+                   autocomplete="new-password"
+                   class="input input-bordered w-full {% if form.password2.errors %}input-error{% endif %}">
+            {% if form.password2.errors %}
+            <p class="text-xs text-error mt-0.5">{{ form.password2.errors.0 }}</p>
+            {% endif %}
+          </div>
+
+          <button type="submit" class="btn btn-primary w-full mt-1 text-base">Créer mon compte</button>
+        </form>
+
+        <div class="flex items-center gap-3 text-xs text-base-content/30">
+          <div class="flex-1 h-px bg-base-300"></div>
+          <span>ou</span>
+          <div class="flex-1 h-px bg-base-300"></div>
         </div>
 
-        <label class="form-control w-full">
-          <div class="label pb-1"><span class="label-text text-sm font-medium">Email <span class="text-error">*</span></span></div>
-          <input type="email" name="email" value="{{ form.email.value|default:'' }}"
-                 placeholder="votre@email.com"
-                 autocomplete="email"
-                 class="input input-bordered w-full {% if form.email.errors %}input-error{% endif %}">
-          {% if form.email.errors %}
-          <div class="label"><span class="label-text-alt text-error">{{ form.email.errors.0 }}</span></div>
-          {% endif %}
-        </label>
+        <p class="text-center text-sm text-base-content/60">
+          Déjà un compte ?
+          <a href="{% url 'users:login' %}" class="font-semibold text-primary hover:underline">Se connecter</a>
+        </p>
 
-        <label class="form-control w-full">
-          <div class="label pb-1"><span class="label-text text-sm font-medium">Mot de passe <span class="text-error">*</span></span></div>
-          <input type="password" name="password1"
-                 placeholder="8 caractères minimum"
-                 autocomplete="new-password"
-                 class="input input-bordered w-full {% if form.password1.errors %}input-error{% endif %}">
-          {% if form.password1.errors %}
-          <div class="label"><span class="label-text-alt text-error">{{ form.password1.errors.0 }}</span></div>
-          {% endif %}
-        </label>
-
-        <label class="form-control w-full">
-          <div class="label pb-1"><span class="label-text text-sm font-medium">Confirmer <span class="text-error">*</span></span></div>
-          <input type="password" name="password2"
-                 placeholder="••••••••"
-                 autocomplete="new-password"
-                 class="input input-bordered w-full {% if form.password2.errors %}input-error{% endif %}">
-          {% if form.password2.errors %}
-          <div class="label"><span class="label-text-alt text-error">{{ form.password2.errors.0 }}</span></div>
-          {% endif %}
-        </label>
-
-        <button type="submit" class="btn btn-primary w-full mt-1">Créer mon compte</button>
-      </form>
-
-      <div class="divider text-xs text-base-content/30">ou</div>
-
-      <p class="text-center text-sm text-base-content/60">
-        Déjà un compte ?
-        <a href="{% url 'users:login' %}" class="link link-primary font-medium">Se connecter</a>
-      </p>
-
+      </div>
     </div>
+
   </div>
 </div>
 {% endblock %}

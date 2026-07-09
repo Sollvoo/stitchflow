@@ -1,112 +1,141 @@
-{% load django_vite %}
+{% load django_vite static %}
 <!DOCTYPE html>
-<html lang="fr" data-theme="light">
+<html lang="fr" data-theme="stitchflow">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{% block title %}StitchFlow{% endblock %} — SVG vers broderie PES</title>
+  <title>{% block title %}StitchFlow{% endblock %} - Conversion broderie PES</title>
+  <link rel="icon" href="{% static 'core/brand/favicon.svg' %}" type="image/svg+xml" />
+  <link rel="alternate icon" href="{% static 'core/brand/favicon-32.png' %}" type="image/png" sizes="32x32" />
+  <link rel="alternate icon" href="{% static 'core/brand/favicon-16.png' %}" type="image/png" sizes="16x16" />
+  <link rel="apple-touch-icon" href="{% static 'core/brand/apple-touch-icon.png' %}" />
+  <meta name="theme-color" content="#F8F3EB" />
   {% vite_asset 'main.js' %}
 </head>
-<body class="min-h-screen bg-base-200 flex flex-col">
+<body class="min-h-screen bg-base-200 text-base-content flex flex-col font-body">
 
-  <!-- Navbar -->
-  <div class="navbar bg-base-100 shadow-md border-b border-base-300 sticky top-0 z-50">
-    <div class="navbar-start">
-      <a href="/" class="flex items-center gap-2 px-4 hover:opacity-80 transition-opacity">
-        <span class="text-2xl">🧵</span>
-        <span class="font-bold text-xl text-primary tracking-tight">StitchFlow</span>
-      </a>
-    </div>
-    <div class="navbar-end px-4 gap-2">
-      <a href="/conversions/" class="btn btn-primary btn-sm gap-2">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-        </svg>
-        Nouvelle conversion
+  <div x-data="{ mobileOpen: false }" class="sticky top-0 z-50 border-b border-base-300 shadow-sm" style="background-color: #fcf7f1">
+    <div class="container mx-auto flex h-14 max-w-5xl w-full items-center justify-between px-4">
+      <a href="/" class="sf-brand-link shrink-0 transition-opacity hover:opacity-80" aria-label="StitchFlow">
+        <img src="{% static 'core/brand/stitchflow-mark-coral.svg' %}" alt="" class="sf-brand-mark sm:hidden" width="24" height="28">
+        <img src="{% static 'core/brand/stitchflow-logo-horizontal.svg' %}" alt="StitchFlow" class="sf-brand-logo hidden sm:block" width="154" height="35">
+        <span class="sf-brand-wordmark sm:hidden">
+          <span class="font-semibold">Stitch</span><span class="font-normal">Flow</span>
+        </span>
       </a>
 
-      {% if user.is_authenticated %}
-      <div x-data="{
-        open: false,
-        top: 0,
-        right: 0,
-        toggle() {
-          if (!this.open) {
-            const r = this.$refs.btn.getBoundingClientRect();
-            this.top = r.bottom + 8;
-            this.right = window.innerWidth - r.right;
+      <div class="flex items-center gap-2">
+        <a href="/conversions/" class="hidden sm:inline-flex items-center gap-1.5 btn btn-primary btn-sm">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+          </svg>
+          Nouvelle conversion
+        </a>
+        <a href="/conversions/" class="sm:hidden inline-flex btn btn-primary btn-sm btn-square" aria-label="Nouvelle conversion">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+          </svg>
+        </a>
+
+        {% if user.is_authenticated %}
+        <div x-data="{
+          open: false,
+          top: 0,
+          right: 0,
+          toggle() {
+            if (!this.open) {
+              const r = this.$refs.btn.getBoundingClientRect();
+              this.top = r.bottom + 8;
+              this.right = window.innerWidth - r.right;
+            }
+            this.open = !this.open;
           }
-          this.open = !this.open;
-        }
-      }">
-        <button x-ref="btn" @click.stop="toggle()"
-                class="btn btn-ghost btn-sm gap-1.5 font-medium">
-          <div class="w-7 h-7 rounded-full bg-primary/15 text-primary flex items-center justify-center text-xs font-bold shrink-0">
-            {{ user.first_name|slice:":1"|upper|default:user.email|slice:":1"|upper }}
-          </div>
-          <span class="hidden sm:inline max-w-[80px] truncate">{{ user.first_name|default:user.email }}</span>
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 opacity-50 transition-transform duration-200" :class="open ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7" />
+        }">
+          <button x-ref="btn" @click.stop="toggle()"
+                  class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 transition-colors hover:bg-base-200">
+            <span class="max-w-[90px] truncate text-sm font-medium">{{ user.first_name|default:user.email }}</span>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 shrink-0 opacity-40 transition-transform duration-200" :class="open ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          <template x-teleport="body">
+            <div x-show="open"
+                 @click.stop
+                 @click.outside="open = false"
+                 @keydown.escape.window="open = false"
+                 x-transition:enter="transition ease-out duration-150"
+                 x-transition:enter-start="opacity-0 -translate-y-1"
+                 x-transition:enter-end="opacity-100 translate-y-0"
+                 x-transition:leave="transition ease-in duration-100"
+                 x-transition:leave-start="opacity-100 translate-y-0"
+                 x-transition:leave-end="opacity-0 -translate-y-1"
+                 :style="`position:fixed; top:${top}px; right:${right}px; z-index:9999; background-color:#fcf7f1;`"
+                 class="w-56 overflow-hidden rounded-[20px] border border-base-300 shadow-xl">
+              <div class="border-b border-base-300 px-4 pb-2.5 pt-3.5">
+                <p class="truncate text-xs font-medium text-base-content/50">{{ user.email }}</p>
+              </div>
+              <div class="px-2 pb-1 pt-2">
+                <p class="px-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-base-content/40">Mon compte</p>
+                <a href="{% url 'conversions:history' %}" class="flex items-center gap-3 rounded-xl px-2 py-2 text-sm font-medium text-base-content/75 transition-colors hover:bg-base-200">
+                  <svg class="h-4 w-4 shrink-0 text-base-content/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  Mes conversions
+                </a>
+                <a href="{% url 'users:profile' %}" class="flex items-center gap-3 rounded-xl px-2 py-2 text-sm font-medium text-base-content/75 transition-colors hover:bg-base-200">
+                  <svg class="h-4 w-4 shrink-0 text-base-content/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  Profil
+                </a>
+              </div>
+              <div class="border-t border-base-300 px-2 pb-2">
+                <form method="post" action="{% url 'users:logout' %}" class="mt-1">
+                  {% csrf_token %}
+                  <button type="submit" class="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-sm font-medium text-error transition-colors hover:bg-error/10">
+                    <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                    Deconnexion
+                  </button>
+                </form>
+              </div>
+            </div>
+          </template>
+        </div>
+        {% else %}
+        <a href="{% url 'users:login' %}" class="hidden sm:inline-flex btn btn-ghost btn-sm">Connexion</a>
+        <a href="{% url 'users:register' %}" class="hidden sm:inline-flex btn btn-outline btn-sm">S'inscrire</a>
+        <button @click="mobileOpen = !mobileOpen" class="sm:hidden btn btn-ghost btn-sm btn-square" aria-label="Menu">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" :class="mobileOpen ? 'hidden' : 'block'" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" :class="mobileOpen ? 'block' : 'hidden'" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
-        <template x-teleport="body">
-          <div x-show="open"
-               @click.stop
-               @click.outside="open = false"
-               @keydown.escape.window="open = false"
-               x-transition:enter="transition ease-out duration-150"
-               x-transition:enter-start="opacity-0 -translate-y-1"
-               x-transition:enter-end="opacity-100 translate-y-0"
-               x-transition:leave="transition ease-in duration-100"
-               x-transition:leave-start="opacity-100 translate-y-0"
-               x-transition:leave-end="opacity-0 -translate-y-1"
-               :style="`position:fixed; top:${top}px; right:${right}px; z-index:9999; background:#fff; box-shadow:0 8px 32px rgba(0,0,0,.12),0 2px 8px rgba(0,0,0,.06); border:1px solid rgba(0,0,0,.07);`"
-               class="w-56 rounded-2xl overflow-hidden">
-            <!-- Email -->
-            <div class="px-4 pt-3.5 pb-2.5" style="border-bottom: 1px solid rgba(0,0,0,0.06);">
-              <p class="text-xs font-medium truncate" style="color:#9ca3af;">{{ user.email }}</p>
-            </div>
-            <!-- Mon compte -->
-            <div class="px-2 pt-2 pb-1">
-              <p class="px-2 pb-1 text-[10px] font-semibold tracking-widest uppercase" style="color:#c0c0c0;">Mon compte</p>
-              <a href="{% url 'conversions:history' %}" class="flex items-center gap-3 px-2 py-2 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
-                <svg class="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-                Mes conversions
-              </a>
-              <a href="{% url 'users:profile' %}" class="flex items-center gap-3 px-2 py-2 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
-                <svg class="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-                Profil
-              </a>
-            </div>
-            <!-- Déconnexion -->
-            <div class="px-2 pb-2" style="border-top: 1px solid rgba(0,0,0,0.06);">
-              <form method="post" action="{% url 'users:logout' %}" class="mt-1">
-                {% csrf_token %}
-                <button type="submit" class="w-full flex items-center gap-3 px-2 py-2 rounded-xl text-sm font-medium transition-colors" style="color:#ef4444;" onmouseover="this.style.background='rgba(239,68,68,0.06)'" onmouseout="this.style.background='transparent'">
-                  <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                  </svg>
-                  Déconnexion
-                </button>
-              </form>
-            </div>
-          </div>
-        </template>
+        {% endif %}
       </div>
-      {% else %}
-      <a href="{% url 'users:login' %}" class="btn btn-ghost btn-sm">Connexion</a>
-      <a href="{% url 'users:register' %}" class="btn btn-outline btn-sm">S'inscrire</a>
-      {% endif %}
     </div>
+
+    {% if not user.is_authenticated %}
+    <div x-show="mobileOpen"
+         x-cloak
+         x-transition:enter="transition ease-out duration-150"
+         x-transition:enter-start="opacity-0 -translate-y-2"
+         x-transition:enter-end="opacity-100 translate-y-0"
+         x-transition:leave="transition ease-in duration-100"
+         x-transition:leave-start="opacity-100 translate-y-0"
+         x-transition:leave-end="opacity-0 -translate-y-2"
+         class="flex flex-col gap-2 border-t border-base-300 px-4 pb-4 pt-3" style="background-color: #fcf7f1">
+      <a href="{% url 'users:login' %}" @click="mobileOpen = false" class="btn btn-ghost justify-start">Connexion</a>
+      <a href="{% url 'users:register' %}" @click="mobileOpen = false" class="btn btn-outline justify-start">S'inscrire</a>
+    </div>
+    {% endif %}
   </div>
 
-  <!-- Messages Django -->
   {% if messages %}
-  <div class="container mx-auto px-4 mt-4 max-w-3xl">
+  <div class="container mx-auto mt-4 max-w-3xl px-4">
     {% for message in messages %}
     <div role="alert" class="alert {% if message.tags == 'error' %}alert-error{% elif message.tags == 'success' %}alert-success{% elif message.tags == 'warning' %}alert-warning{% else %}alert-info{% endif %} mb-2 shadow">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -118,16 +147,14 @@
   </div>
   {% endif %}
 
-  <!-- Contenu principal -->
-  <main class="flex-1 container mx-auto px-4 py-10 {% block main_max_w %}max-w-5xl{% endblock %} w-full">
+  <main class="container mx-auto flex-1 w-full px-4 py-10 {% block main_max_w %}max-w-5xl{% endblock %}">
     {% block content %}{% endblock %}
   </main>
 
-  <!-- Footer -->
-  <footer class="bg-base-100 border-t border-base-300 mt-auto">
-    <div class="container mx-auto px-4 py-4 max-w-5xl flex items-center justify-between">
-      <span class="text-sm text-base-content/50">© 2025 StitchFlow</span>
-      <span class="text-sm text-base-content/40">SVG → PES via Ink/Stitch</span>
+  <footer class="mt-auto border-t border-base-300 bg-base-100">
+    <div class="container mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
+      <span class="text-sm text-base-content/50">&copy; 2025 StitchFlow</span>
+      <span class="text-sm text-base-content/40">SVG, PNG, JPEG, WebP, PDF &rarr; PES</span>
     </div>
   </footer>
 

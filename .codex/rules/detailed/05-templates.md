@@ -33,7 +33,8 @@ Quand terminal, le HTML retourne ne contient pas de `hx-trigger` -> le polling s
 
 - Utiliser les composants DaisyUI (card, badge, btn, loading, alert)
 - Classes Tailwind directement dans les templates - pas de CSS custom sauf dans `styles.css`
-- Theme par defaut, pas de configuration custom necessaire pour le MVP
+- Le theme de reference est `stitchflow` ; preferer les tokens `base-*`, `primary`, `secondary`, `accent`
+- Eviter les couleurs inline et se reposer sur `src/frontend/tailwind.config.js`, `theme.css` et la regle `15-design-system.md`
 
 ## AlpineJS
 

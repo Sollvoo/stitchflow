@@ -4,7 +4,7 @@
 <div class="max-w-3xl mx-auto px-4 py-10">
 
   <div class="flex items-center justify-between mb-6">
-    <h1 class="text-xl font-bold">Mes conversions</h1>
+    <h1 class="font-display font-bold text-xl">Mes conversions</h1>
     <a href="{% url 'conversions:upload' %}" class="btn btn-primary btn-sm gap-1">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -17,8 +17,8 @@
   <div class="flex flex-col gap-3">
     {% for job in jobs %}
     <a href="{% url 'conversions:detail' job.id %}"
-       class="card bg-base-100 shadow-sm hover:shadow-md transition-shadow border border-base-200">
-      <div class="card-body py-3 px-4 flex-row items-center gap-4">
+       class="sf-stitch-card flex flex-row items-center gap-4 py-3 px-4 hover:shadow-lg transition-shadow">
+      <div class="contents">
 
         <!-- Aperçu ou icône format -->
         <div class="w-12 h-12 rounded-lg bg-base-200 flex items-center justify-center shrink-0 overflow-hidden">
@@ -58,15 +58,13 @@
   </div>
 
   {% else %}
-  <div class="card bg-base-100 shadow-sm border border-base-200">
-    <div class="card-body items-center text-center py-16 gap-4">
+  <div class="sf-panel flex flex-col items-center text-center py-16 gap-4">
       <div class="text-5xl">🧵</div>
-      <h2 class="text-lg font-semibold">Aucune conversion pour l'instant</h2>
-      <p class="text-sm text-base-content/50">Uploadez un fichier SVG, PNG ou PDF pour commencer.</p>
+      <h2 class="font-display font-semibold text-lg">Aucune conversion pour l'instant</h2>
+      <p class="text-sm text-base-content/50">Uploadez un fichier SVG, PNG, JPEG, WebP ou PDF pour commencer.</p>
       <a href="{% url 'conversions:upload' %}" class="btn btn-primary btn-sm mt-2">
         Démarrer une conversion
       </a>
-    </div>
   </div>
   {% endif %}
 

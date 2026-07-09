@@ -22,7 +22,7 @@ _VENDOR = Path(os.environ.get('STITCH_VENDOR_PATH', BASE_DIR.parent / 'vendor'))
 
 # ── Django core ───────────────────────────────────────────────────────────────
 
-DEBUG = False
+DEBUG = True
 SECRET_KEY = 'stitchflow-desktop-local-only-key-not-a-secret'
 ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '::1']
 
@@ -48,6 +48,17 @@ MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 
 INSTALLED_APPS = [app for app in INSTALLED_APPS if 'celery' not in app.lower()]  # noqa: F405
 
+USE_CELERY = False
+
+# Cache en mémoire locale — Redis non disponible en mode desktop
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+    }
+}
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+SESSION_SAVE_EVERY_REQUEST = True
+
 # ── Vite — toujours en mode production (assets pré-buildés) ──────────────────
 
 DJANGO_VITE = {
@@ -55,6 +66,7 @@ DJANGO_VITE = {
         'dev_mode': False,
         'static_url_prefix': 'dist/',
         'manifest_path': BASE_DIR / 'frontend' / 'static' / 'dist' / '.vite' / 'manifest.json',  # noqa: F405
+        'app_client_class': 'core.vite.ReloadingDjangoViteAppClient',
     }
 }
 

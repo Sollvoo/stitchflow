@@ -343,6 +343,7 @@ Objectif : transformer StitchFlow en application desktop Mac (ARM64 prioritaire,
 - [x] `src/stitchflow/settings_desktop.py` — overrides : MEDIA_ROOT + DB dans `~/Library/Application Support/StitchFlow/`, sans Redis/Celery
 - [x] `src/conversions/tasks.py` — décorateurs `@shared_task` retirés (fonctions Python pures)
 - [x] `src/conversions/views.py` — `.delay()` remplacé par `threading.Thread(daemon=True)`
+- [x] Robustesse assets Vite locale : HTML dynamique servi en `no-store` + anciens bundles hashés conservés entre deux builds + relecture du `manifest.json` a chaque rendu pour eviter themes/styles incoherents apres rebuild
 - [x] `src/stitchflow/celery.py` supprimé, `__init__.py` nettoyé, Celery/Redis retirés de `requirements.txt`
 - [x] `scripts/check_deps.py` — vérification Ink/Stitch, Poppler, Python au démarrage, dialog si manquant
 - [x] `package.json` — Electron 36 + electron-builder 25, scripts `build:mac-arm`, `build:mac-intel`, `build:win`
@@ -403,6 +404,9 @@ Objectif : transformer l'outil en service commercial si la version desktop valid
 
 ### Marketing
 
+- [x] Logo StitchFlow integre dans le produit (lockup responsive, favicon web, icones desktop Electron, assets SVG/PNG/ICO/ICNS)
+
+- [x] Design system StitchFlow branche sur TailwindCSS + DaisyUI (theme `stitchflow`, tokens couleur, regle Codex de style)
 - [ ] Landing page complète (avant/après, preview fils, témoignage beta, comparaison vs prestataire humain)
 - [ ] Ouverture inscription publique
 - [ ] Présence passive sur r/embroidery + groupes Facebook broderie FR (après validation beta)

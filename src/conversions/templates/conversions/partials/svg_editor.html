@@ -1,6 +1,7 @@
 {% load thread_fidelity %}
-<div class="card-body"
-     x-data="svgEditor({ densities: { {% for c in colors_with_snap %}'{{ c.hex }}': {{ c.density|stringformat:'.4f' }},{% endfor %} } })">
+<div class="p-5 flex flex-col gap-4"
+     x-data="svgEditor({ densities: { {% for c in colors_with_snap %}'{{ c.hex }}': {{ c.density|stringformat:'.4f' }},{% endfor %} } })"
+     x-cloak>
 
   <input type="hidden" name="source" id="merge-source-field" x-model="selectedForMerge">
 
@@ -10,55 +11,55 @@
       <h3 class="card-title text-info text-base">Vérifiez le SVG vectorisé</h3>
       <div class="badge badge-info badge-outline badge-sm">attente validation</div>
     </div>
-    <div class="flex items-center gap-1">
+    <div class="flex items-center gap-0.5">
       <!-- Undo -->
-      <button
-        hx-post="{% url 'conversions:svg_undo' job.id %}"
-        hx-target="#conversion-status"
-        hx-swap="outerHTML"
-        class="btn btn-ghost btn-xs gap-1 {% if not can_undo %}btn-disabled opacity-30{% endif %}"
-        {% if not can_undo %}disabled{% endif %}
-        title="Annuler la dernière modification">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-        </svg>
-        Annuler
-      </button>
+      <div class="tooltip tooltip-bottom" data-tip="Annuler">
+        <button
+          hx-post="{% url 'conversions:svg_undo' job.id %}"
+          hx-target="#conversion-status"
+          hx-swap="outerHTML"
+          class="btn btn-ghost btn-xs btn-square {% if not can_undo %}opacity-30{% endif %}"
+          {% if not can_undo %}disabled{% endif %}>
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+          </svg>
+        </button>
+      </div>
       <!-- Redo -->
-      <button
-        hx-post="{% url 'conversions:svg_redo' job.id %}"
-        hx-target="#conversion-status"
-        hx-swap="outerHTML"
-        class="btn btn-ghost btn-xs gap-1 {% if not can_redo %}btn-disabled opacity-30{% endif %}"
-        {% if not can_redo %}disabled{% endif %}
-        title="Rétablir la modification annulée">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10H11a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6" />
-        </svg>
-        Rétablir
-      </button>
-      <!-- Télécharger le SVG vectorisé -->
-      <a href="{% url 'conversions:svg_download' job.id %}"
-         class="btn btn-ghost btn-xs gap-1"
-         title="Télécharger le SVG vectorisé pour l'inspecter ou le modifier hors application">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-        </svg>
-        SVG
-      </a>
-      <!-- Réinitialiser (seulement si des modifications existent) -->
+      <div class="tooltip tooltip-bottom" data-tip="Rétablir">
+        <button
+          hx-post="{% url 'conversions:svg_redo' job.id %}"
+          hx-target="#conversion-status"
+          hx-swap="outerHTML"
+          class="btn btn-ghost btn-xs btn-square {% if not can_redo %}opacity-30{% endif %}"
+          {% if not can_redo %}disabled{% endif %}>
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10H11a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6" />
+          </svg>
+        </button>
+      </div>
+      <!-- Télécharger SVG -->
+      <div class="tooltip tooltip-bottom" data-tip="Télécharger le SVG">
+        <a href="{% url 'conversions:svg_download' job.id %}"
+           class="btn btn-ghost btn-xs btn-square">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+        </a>
+      </div>
+      <!-- Réinitialiser -->
       {% if can_undo %}
-      <button
-        hx-post="{% url 'conversions:svg_reset' job.id %}"
-        hx-target="#conversion-status"
-        hx-swap="outerHTML"
-        class="btn btn-ghost btn-xs gap-1 text-error/60 hover:text-error"
-        title="Annuler toutes les modifications et revenir à l'état initial">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-        </svg>
-        Réinitialiser
-      </button>
+      <div class="tooltip tooltip-bottom" data-tip="Tout réinitialiser">
+        <button
+          hx-post="{% url 'conversions:svg_reset' job.id %}"
+          hx-target="#conversion-status"
+          hx-swap="outerHTML"
+          class="btn btn-ghost btn-xs btn-square text-error/50 hover:text-error">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        </button>
+      </div>
       {% endif %}
     </div>
   </div>
@@ -70,11 +71,12 @@
 
   <!-- Aperçu comparatif -->
   <div class="grid grid-cols-2 gap-3">
-    <div>
+    <div class="image-source-wrapper">
       <p class="text-xs text-center text-base-content/40 mb-1 uppercase tracking-wide font-medium">Image source</p>
       <img src="{{ job.original_file.url }}"
            class="rounded-lg border border-base-200 w-full max-h-44 object-contain bg-white"
-           alt="Image source">
+           alt="Image source"
+           onerror="this.closest('.image-source-wrapper').style.display='none'">
     </div>
 
     <div>
@@ -258,24 +260,23 @@
   {% endif %}
 
   <!-- Actions footer -->
-  <div class="card-actions justify-between items-center mt-6 pt-4 border-t border-base-200">
+  <div class="flex flex-col gap-3 mt-2 pt-4 border-t border-base-200">
     <button
       hx-post="{% url 'conversions:svg_validate' job.id %}"
       hx-target="#conversion-status"
       hx-swap="outerHTML"
-      class="btn btn-ghost btn-sm text-base-content/40 hover:text-base-content/70">
-      Convertir directement sans modifier
-    </button>
-
-    <button
-      hx-post="{% url 'conversions:svg_validate' job.id %}"
-      hx-target="#conversion-status"
-      hx-swap="outerHTML"
-      class="btn btn-info gap-2">
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      class="btn btn-primary btn-lg w-full gap-2 shadow-md">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
       </svg>
       Valider et convertir en PES
+    </button>
+    <button
+      hx-post="{% url 'conversions:svg_validate' job.id %}"
+      hx-target="#conversion-status"
+      hx-swap="outerHTML"
+      class="btn btn-ghost btn-sm text-base-content/40 hover:text-base-content/70 self-center">
+      Convertir sans modifier les couleurs
     </button>
   </div>
 

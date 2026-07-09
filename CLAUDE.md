@@ -327,6 +327,22 @@ Fichier principal : `conversions/tasks.py` → `process_conversion_job()`
 
 ---
 
+## Design system — règles obligatoires pour les agents IA
+
+**Toujours consulter `.claude/rules/detailed/15-design-system.md` avant toute modification de template HTML ou CSS.**
+
+Règles à appliquer systématiquement, sans attendre que l'utilisateur le demande :
+
+- **Tokens CSS** : utiliser `--color-primary-*`, `--color-secondary-*`, `--color-neutral-50`, `--font-display` — jamais de couleurs hardcodées
+- **Composants sf-*** : `sf-panel` pour les cards principales, `sf-stitch-card` pour les secondaires, `sf-kicker` pour les badges d'étape
+- **Classes Tailwind dynamiques interdites** dans les templates Django : `bg-{{ variable }}`, `text-{{ variable }}`, `badge-{{ variable }}` ne sont pas incluses par le build Tailwind — toujours utiliser des conditionnelles `{% if %}{% elif %}{% else %}` explicites
+- **Navbar et dropdowns** : toujours `style="background-color: #fcf7f1"` explicite, jamais `bg-base-100` seul
+- **Titres** : `font-display font-bold` ou `font-display font-semibold` sur tous les `h1`/`h2`/`h3`
+- **Boutons icône seul** : toujours entourer d'un `tooltip tooltip-bottom` + `data-tip`
+- Après toute modification CSS/HTML : lancer `npm run build` dans `src/frontend/` et vérifier que `python src/manage.py check` passe
+
+---
+
 ## Points d'attention pour les agents IA
 
 - Le venv est à `.venv/` à la racine — **toujours l'activer** avant toute commande Python

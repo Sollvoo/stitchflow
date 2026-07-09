@@ -1,5 +1,5 @@
 const { app, BrowserWindow, dialog, shell, Menu } = require('electron')
-const { spawn, execSync } = require('child_process')
+const { spawn, execFileSync } = require('child_process')
 const path = require('path')
 const net = require('net')
 const fs = require('fs')
@@ -125,7 +125,8 @@ function runMigrations() {
   }
 
   try {
-    execSync(`"${python}" manage.py migrate --run-syncdb`, {
+    const managePy = path.join(srcPath, 'manage.py')
+    execFileSync(python, [managePy, 'migrate', '--run-syncdb'], {
       cwd: srcPath,
       env,
       stdio: 'ignore',
@@ -139,17 +140,20 @@ function runMigrations() {
 // ── Fenêtre principale ────────────────────────────────────────────────────────
 
 function createWindow(port) {
+  const resourcesPath = getResourcesPath()
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 900,
     minHeight: 600,
     title: 'StitchFlow',
-    backgroundColor: '#1a1a2e',
+    backgroundColor: '#F8F3EB',
+    icon: path.join(resourcesPath, 'assets', 'brand', 'icon-256.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
   })
 
@@ -158,9 +162,14 @@ function createWindow(port) {
 
   mainWindow.on('closed', () => { mainWindow = null })
 
-  // Ouvrir les liens externes dans le navigateur par défaut
+  // Ouvrir les liens externes dans le navigateur par défaut (https:// et http:// uniquement)
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (!url.startsWith('http://127.0.0.1')) shell.openExternal(url)
+    try {
+      const parsed = new URL(url)
+      if (!url.startsWith('http://127.0.0.1') && ['https:', 'http:'].includes(parsed.protocol)) {
+        shell.openExternal(url)
+      }
+    } catch {}
     return { action: 'deny' }
   })
 
@@ -179,7 +188,7 @@ function buildMenu(port) {
       label: 'Affichage',
       submenu: [
         { role: 'reload' },
-        { role: 'toggleDevTools' },
+        ...(!app.isPackaged ? [{ role: 'toggleDevTools' }] : []),
         { type: 'separator' },
         { role: 'resetZoom' },
         { role: 'zoomIn' },
@@ -215,7 +224,7 @@ function checkDependencies() {
   const checkScript = path.join(resourcesPath, 'scripts', 'check_deps.py')
 
   try {
-    const result = execSync(`"${python}" "${checkScript}"`, {
+    const result = execFileSync(python, [checkScript], {
       timeout: 10000,
       encoding: 'utf8',
     })

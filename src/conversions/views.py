@@ -20,6 +20,14 @@ from .forms import SVGUploadForm, PNGUploadForm, PDFUploadForm
 from .tasks import process_conversion_job, finalize_svg_to_pes
 
 
+def _dispatch(task_fn, job_id: str) -> None:
+    """Lance la tâche via Celery (web) ou threading (desktop)."""
+    if getattr(settings, 'USE_CELERY', False):
+        task_fn.delay(job_id)
+    else:
+        threading.Thread(target=task_fn, args=[job_id], daemon=True).start()
+
+
 class UnifiedUploadView(View):
     _FORMAT_TO_FORM: dict[str, type] = {
         'svg': SVGUploadForm,
@@ -51,7 +59,7 @@ class UnifiedUploadView(View):
             if excluded_colors_raw:
                 job.conversion_metadata = {'excluded_colors': excluded_colors_raw}
                 job.save(update_fields=['conversion_metadata'])
-            threading.Thread(target=process_conversion_job, args=[str(job.id)], daemon=True).start()
+            _dispatch(process_conversion_job, str(job.id))
             messages.success(request, 'Fichier reçu. La conversion est en cours.')
             return redirect(reverse('conversions:detail', kwargs={'pk': job.id}))
 
@@ -141,7 +149,7 @@ class UploadView(CreateView):
             self.object.original_filename = original_stem
             self.object.save(update_fields=['original_filename'])
 
-        threading.Thread(target=process_conversion_job, args=[str(self.object.id)], daemon=True).start()
+        _dispatch(process_conversion_job, str(self.object.id))
         messages.success(self.request, 'Fichier reçu. La conversion est en cours.')
         return response
 
@@ -163,7 +171,7 @@ class UploadPNGView(CreateView):
         self.object.save(update_fields=[
             'original_filename', 'n_colors', 'remove_background',
         ])
-        threading.Thread(target=process_conversion_job, args=[str(self.object.id)], daemon=True).start()
+        _dispatch(process_conversion_job, str(self.object.id))
         messages.success(self.request, 'Image reçue. La conversion est en cours.')
         return response
 
@@ -185,7 +193,7 @@ class UploadPDFView(CreateView):
         self.object.save(update_fields=[
             'original_filename', 'n_colors', 'remove_background',
         ])
-        threading.Thread(target=process_conversion_job, args=[str(self.object.id)], daemon=True).start()
+        _dispatch(process_conversion_job, str(self.object.id))
         messages.success(self.request, 'PDF reçu. La conversion est en cours.')
         return response
 
@@ -249,7 +257,7 @@ class HistoryView(View):
             'status_filter': status_filter,
             'format_filter': format_filter,
             'date_filter': date_filter,
-            'total_count': qs.count(),
+            'total_count': paginator.count,
             'query_string': query_string,
         })
 
@@ -284,7 +292,7 @@ class ReconvertView(View):
                 new_job.original_file = new_name
                 new_job.save(update_fields=['original_file'])
 
-        threading.Thread(target=process_conversion_job, args=[str(new_job.id)], daemon=True).start()
+        _dispatch(process_conversion_job, str(new_job.id))
         return redirect('conversions:detail', pk=new_job.id)
 
 
@@ -302,7 +310,7 @@ class ExportCSVView(View):
         writer = csv.writer(response)
         writer.writerow(['ID', 'Fichier', 'Format', 'Statut', 'Score qualité', 'Points', 'Fils', 'Largeur (mm)', 'Date'])
 
-        jobs = ConversionJob.objects.filter(user=request.user).order_by('-created_at')
+        jobs = ConversionJob.objects.filter(user=request.user).order_by('-created_at').iterator(chunk_size=500)
         for job in jobs:
             meta = job.conversion_metadata or {}
             writer.writerow([
@@ -1051,7 +1059,7 @@ class SvgValidateView(View):
 
         job.status = ConversionJob.Status.PENDING
         job.save(update_fields=['status', 'updated_at'])
-        threading.Thread(target=finalize_svg_to_pes, args=[str(job.id)], daemon=True).start()
+        _dispatch(finalize_svg_to_pes, str(job.id))
 
         html = render_to_string(
             'conversions/partials/conversion_status.html',

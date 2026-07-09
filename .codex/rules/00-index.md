@@ -34,6 +34,7 @@ Ce fichier sert de point d'entree pour les regles locales Codex du projet.
 |---|---|---|---|
 | 05 | templates.md | Partials HTMX, AlpineJS, DaisyUI | `**/templates/**/*.html` |
 | 14 | htmx-alpinejs.md | Coordination HTMX/Alpine, polling Celery | `**/templates/**/*.html` |
+| 15 | design-system.md | Theme StitchFlow, tokens Tailwind, usage DaisyUI | `src/frontend/assets/styles.css`, `**/templates/**/*.html` |
 
 ## Notes
 

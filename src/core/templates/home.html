@@ -5,17 +5,22 @@
 {% block content %}
 
 <!-- Hero -->
-<div class="rounded-3xl bg-gradient-to-br from-primary/10 via-base-100 to-secondary/10 border border-base-300 shadow-sm px-8 py-16 mb-10 text-center">
-  <div class="inline-flex items-center gap-2 bg-primary/10 text-primary text-xs font-semibold px-3 py-1 rounded-full mb-6 uppercase tracking-wider">
-    SVG / PNG / JPEG / WebP / PDF → Broderie PES
+<div class="sf-panel sf-thread-dots px-6 sm:px-10 py-14 mb-10 text-center">
+  <div class="flex justify-center mb-6">
+    <span class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full border border-primary/25 bg-primary/10 text-primary text-[11px] font-semibold uppercase tracking-[0.2em]">
+      SVG · PNG · JPEG · WebP · PDF → Broderie PES
+    </span>
   </div>
-  <h1 class="text-5xl font-extrabold text-base-content mb-4 leading-tight">
-    Convertissez vos designs<br/>en fichiers de broderie
+  <h1 class="font-display font-bold text-4xl sm:text-5xl text-base-content mb-4 leading-tight">
+    Convertissez vos designs<br class="hidden sm:block"/>en fichiers de broderie
   </h1>
-  <p class="text-lg text-base-content/60 mb-8 max-w-xl mx-auto">
-    Uploadez un fichier <strong class="text-base-content">.svg</strong>, une image <strong class="text-base-content">.png/.jpg/.webp</strong> ou un <strong class="text-base-content">.pdf</strong> et téléchargez votre fichier <strong class="text-base-content">.pes</strong> prêt pour votre machine à broder.
+  <p class="text-base sm:text-lg text-base-content/60 mb-8 max-w-xl mx-auto">
+    Uploadez un <strong class="text-base-content">SVG</strong>,
+    une image <strong class="text-base-content">PNG / JPEG / WebP</strong>
+    ou un <strong class="text-base-content">PDF</strong>
+    et téléchargez votre fichier <strong class="text-base-content">.PES</strong>
+    prêt pour votre machine à broder.
   </p>
-
   <div class="flex justify-center">
     <a href="{% url 'conversions:upload' %}" class="btn btn-primary btn-lg shadow-lg gap-2">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -26,45 +31,40 @@
   </div>
 </div>
 
-<!-- Steps -->
+<!-- Étapes -->
 <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-10">
 
-  <div class="card bg-base-100 shadow border border-base-200 hover:shadow-md transition-shadow">
-    <div class="card-body">
-      <div class="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-2xl mb-3">📁</div>
-      <div class="badge badge-primary badge-sm mb-1">Étape 1</div>
-      <h2 class="card-title text-base">Uploadez votre fichier</h2>
-      <p class="text-sm text-base-content/55">SVG, PNG, JPEG, WebP ou PDF. Taille max : 50 Mo.</p>
-    </div>
+  <div class="sf-stitch-card p-6 hover:shadow-lg transition-shadow">
+    <div class="w-11 h-11 rounded-2xl bg-primary/10 flex items-center justify-center text-xl mb-4">📁</div>
+    <div class="sf-kicker mb-2">Étape 1</div>
+    <h2 class="font-display font-semibold text-base text-base-content mt-2 mb-1">Uploadez votre fichier</h2>
+    <p class="text-sm text-base-content/55">SVG, PNG, JPEG, WebP ou PDF. Taille max : 50 Mo.</p>
   </div>
 
-  <div class="card bg-base-100 shadow border border-base-200 hover:shadow-md transition-shadow">
-    <div class="card-body">
-      <div class="w-12 h-12 rounded-2xl bg-secondary/10 flex items-center justify-center text-2xl mb-3">⚙️</div>
-      <div class="badge badge-secondary badge-sm mb-1">Étape 2</div>
-      <h2 class="card-title text-base">Conversion automatique</h2>
-      <p class="text-sm text-base-content/55">Ink/Stitch génère votre fichier PES en arrière-plan via Celery.</p>
-    </div>
+  <div class="sf-stitch-card p-6 hover:shadow-lg transition-shadow">
+    <div class="w-11 h-11 rounded-2xl bg-secondary/10 flex items-center justify-center text-xl mb-4">⚙️</div>
+    <div class="sf-kicker mb-2" style="color: var(--color-secondary-600); border-color: color-mix(in oklab, var(--color-secondary-600) 15%, transparent); background-color: color-mix(in oklab, var(--color-secondary-100) 65%, transparent);">Étape 2</div>
+    <h2 class="font-display font-semibold text-base text-base-content mt-2 mb-1">Conversion automatique</h2>
+    <p class="text-sm text-base-content/55">Ink/Stitch génère votre fichier PES en arrière-plan.</p>
   </div>
 
-  <div class="card bg-base-100 shadow border border-base-200 hover:shadow-md transition-shadow">
-    <div class="card-body">
-      <div class="w-12 h-12 rounded-2xl bg-success/10 flex items-center justify-center text-2xl mb-3">⬇️</div>
-      <div class="badge badge-success badge-sm mb-1">Étape 3</div>
-      <h2 class="card-title text-base">Téléchargez le PES</h2>
-      <p class="text-sm text-base-content/55">Récupérez votre fichier <code class="text-xs bg-base-200 px-1 rounded">.pes</code> prêt à l'emploi.</p>
-    </div>
+  <div class="sf-stitch-card p-6 hover:shadow-lg transition-shadow">
+    <div class="w-11 h-11 rounded-2xl bg-success/10 flex items-center justify-center text-xl mb-4">⬇️</div>
+    <div class="sf-kicker mb-2" style="color: oklch(0.5 0.15 145); border-color: oklch(0.5 0.15 145 / 0.2); background-color: oklch(0.5 0.15 145 / 0.1);">Étape 3</div>
+    <h2 class="font-display font-semibold text-base text-base-content mt-2 mb-1">Téléchargez le PES</h2>
+    <p class="text-sm text-base-content/55">Récupérez votre fichier <code class="text-xs bg-base-200 px-1 rounded">.pes</code> prêt à l'emploi.</p>
   </div>
 
 </div>
 
 <!-- Info formats -->
 <div class="alert bg-base-100 border border-base-200 shadow-sm">
-  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-info shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-accent shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
   </svg>
   <div class="text-sm">
     <span class="font-semibold">Format PES</span> — Compatible Brother, Babylock et la majorité des machines de broderie domestiques.
+    Conçu pour les designs simples à moyens : logos, textes, formes, écussons.
     <span class="text-base-content/50 ml-2">Propulsé par <a href="https://inkstitch.org" class="link link-primary" target="_blank">Ink/Stitch</a></span>
   </div>
 </div>

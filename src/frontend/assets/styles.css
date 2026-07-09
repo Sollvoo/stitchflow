@@ -1,11 +1,228 @@
 @import "tailwindcss";
-@plugin "daisyui";
+@config "../tailwind.config.js";
+@plugin "daisyui" {
+  themes: false;
+}
+@plugin "daisyui/theme" {
+  name: "stitchflow";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+  --color-primary: #c45142;
+  --color-primary-content: #ffffff;
+  --color-secondary: #617055;
+  --color-secondary-content: #ffffff;
+  --color-accent: #4f7f94;
+  --color-accent-content: #ffffff;
+  --color-neutral: #2d2926;
+  --color-neutral-content: #fcf7f1;
+  --color-base-100: #fcf7f1;
+  --color-base-200: #f6efe7;
+  --color-base-300: #eadfce;
+  --color-base-content: #2d2926;
+  --color-info: #4b7f9c;
+  --color-info-content: #ffffff;
+  --color-success: #64844f;
+  --color-success-content: #ffffff;
+  --color-warning: #c78b3f;
+  --color-warning-content: #ffffff;
+  --color-error: #b64e4a;
+  --color-error-content: #ffffff;
+  --radius-selector: 0.5rem;
+  --radius-field: 0.25rem;
+  --radius-box: 0.5rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
+}
+@plugin "daisyui/theme" {
+  name: "stitchflow_night";
+  default: false;
+  prefersdark: false;
+  color-scheme: dark;
+  --color-primary: #ef8f74;
+  --color-primary-content: #2d2926;
+  --color-secondary: #9fb394;
+  --color-secondary-content: #2d2926;
+  --color-accent: #8eb7c5;
+  --color-accent-content: #2d2926;
+  --color-neutral: #f7efe4;
+  --color-neutral-content: #2b2522;
+  --color-base-100: #2b2522;
+  --color-base-200: #352d29;
+  --color-base-300: #4b4039;
+  --color-base-content: #f7efe4;
+  --color-info: #86b7d0;
+  --color-info-content: #2b2522;
+  --color-success: #91b57c;
+  --color-success-content: #2b2522;
+  --color-warning: #d5ab67;
+  --color-warning-content: #2b2522;
+  --color-error: #de857f;
+  --color-error-content: #2b2522;
+  --radius-selector: 0.5rem;
+  --radius-field: 0.25rem;
+  --radius-box: 0.5rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
+}
+@import "./theme.css";
 
-@source "../../../src/core/templates/**/*.html";
-@source "../../../src/conversions/templates/**/*.html";
-@source "../../../src/users/templates/**/*.html";
+@source "../../../src/**/templates/**/*.html";
+@source "../../../src/**/templatetags/**/*.py";
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  background-color: var(--color-neutral-50);
+}
+
+body {
+  font-family: var(--font-body);
+  background-image:
+    radial-gradient(circle at top left, rgba(196, 81, 66, 0.08), transparent 30%),
+    radial-gradient(circle at top right, rgba(79, 127, 148, 0.08), transparent 24%);
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-primary-300) 65%, white 35%);
+  color: var(--color-neutral-900);
+}
+
+@layer base {
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+
+  a,
+  button,
+  input,
+  select,
+  textarea {
+    transition:
+      background-color 180ms ease,
+      border-color 180ms ease,
+      color 180ms ease,
+      box-shadow 180ms ease,
+      transform 180ms ease;
+  }
+
+  button,
+  [type="submit"],
+  [type="button"],
+  [role="button"] {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [type="submit"]:disabled,
+  [type="button"]:disabled {
+    cursor: not-allowed;
+  }
+}
+
+@layer components {
+  .sf-brand-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.625rem;
+    min-width: 0;
+  }
+
+  .sf-brand-mark {
+    width: 1.2rem;
+    height: auto;
+    flex-shrink: 0;
+  }
+
+  .sf-brand-logo {
+    height: 1.75rem;
+    width: auto;
+    max-width: min(42vw, 12rem);
+  }
+
+  .sf-brand-wordmark {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0;
+    min-width: 0;
+    color: var(--color-neutral-900);
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-style: italic;
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+  }
+
+  .sf-panel {
+    border-width: 1px;
+    border-radius: 24px;
+    background-color: var(--color-neutral-50);
+    border-color: color-mix(in oklab, var(--color-neutral-200) 80%, transparent);
+    box-shadow: var(--shadow-thread);
+  }
+
+  .sf-stitch-card {
+    border-width: 1px;
+    border-radius: 24px;
+    background-color: var(--color-neutral-50);
+    border-color: color-mix(in oklab, var(--color-neutral-200) 75%, transparent);
+    box-shadow: var(--shadow-stitch);
+  }
+
+  .sf-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-width: 1px;
+    border-radius: 9999px;
+    padding: 0.25rem 0.75rem;
+    color: var(--color-primary-600);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    border-color: color-mix(in oklab, var(--color-primary-600) 15%, transparent);
+    background-color: color-mix(in oklab, var(--color-primary-100) 65%, transparent);
+  }
+
+  .sf-focus-ring {
+    outline: none;
+  }
+
+  .sf-focus-ring:focus-visible {
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-primary-500) 35%, transparent);
+  }
+
+  .sf-thread-dots {
+    background-image:
+      radial-gradient(circle at 25% 25%, rgba(196, 81, 66, 0.18) 0 1px, transparent 1.2px),
+      radial-gradient(circle at 75% 75%, rgba(97, 112, 85, 0.16) 0 1px, transparent 1.2px);
+    background-size: 18px 18px;
+  }
+}
+
+@media (max-width: 380px) {
+  .sf-brand-wordmark {
+    font-size: 1rem;
+  }
+}
 
 /* SortableJS drag & drop */
 .sortable-ghost { opacity: 0.35; }
-.sortable-chosen { background-color: color-mix(in oklch, var(--color-primary, #570df8) 10%, transparent); }
-.sortable-drag { box-shadow: 0 4px 14px oklch(0 0 0 / 0.15); border-radius: 0.5rem; }
+.sortable-chosen { background-color: color-mix(in oklch, var(--color-brand, #c45142) 10%, transparent); }
+.sortable-drag { box-shadow: var(--shadow-thread); border-radius: 1rem; }
+
+/* Fix conflit .collapse : Tailwind utility (visibility: collapse) ecrase DaisyUI collapse component.
+   Les regles hors @layer ont priorite absolue sur toutes les regles @layer. */
+.collapse:not(col, colgroup, td, tr, tbody, thead, tfoot) {
+  visibility: visible;
+}

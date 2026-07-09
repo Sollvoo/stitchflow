@@ -10,7 +10,7 @@
   <!-- En-tête -->
   <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
     <div>
-      <h1 class="text-xl font-bold">Mes conversions</h1>
+      <h1 class="font-display font-bold text-xl">Mes conversions</h1>
       <p class="text-sm text-base-content/50 mt-0.5">{{ total_count }} conversion{% if total_count != 1 %}s{% endif %}</p>
     </div>
     <div class="flex gap-2">
@@ -76,7 +76,7 @@
   {% if page_obj.object_list %}
   <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
     {% for job in page_obj %}
-    <div class="card bg-base-100 shadow-sm border border-base-200 hover:shadow-md transition-shadow group overflow-hidden">
+    <div class="sf-stitch-card hover:shadow-lg transition-shadow group overflow-hidden">
 
       <!-- Thumbnail -->
       <a href="{% url 'conversions:detail' job.id %}" class="block aspect-square bg-base-200 overflow-hidden rounded-t-2xl">
@@ -129,40 +129,40 @@
         </div>
 
         <!-- Actions -->
-        <div class="flex items-center gap-1 mt-1">
-          <a href="{% url 'conversions:detail' job.id %}" class="btn btn-xs btn-ghost gap-1 flex-1" title="Voir le détail">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-            </svg>
-            Détail
-          </a>
-
-          {% if job.status == 'completed' and job.output_file %}
-          <a href="{% url 'conversions:download' job.id %}" class="btn btn-xs btn-ghost" title="Télécharger PES">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-          </a>
-          {% endif %}
-
-          {% if job.original_file %}
-          <div class="dropdown dropdown-end">
-            <div tabindex="0" role="button" class="btn btn-ghost btn-xs btn-square" title="Plus d'actions">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+        <div class="flex items-center justify-between mt-1.5 pt-1.5 border-t border-base-200">
+          <div class="tooltip tooltip-top" data-tip="Voir le détail">
+            <a href="{% url 'conversions:detail' job.id %}" class="btn btn-ghost btn-xs btn-square">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
               </svg>
-            </div>
-            <ul tabindex="0" class="dropdown-content menu menu-xs bg-base-100 rounded-box z-[50] w-36 p-1 shadow-lg border border-base-200">
-              <li>
-                <form method="post" action="{% url 'conversions:reconvert' job.id %}">
-                  {% csrf_token %}
-                  <button type="submit" class="w-full text-left">Reconvertir</button>
-                </form>
-              </li>
-            </ul>
+            </a>
           </div>
-          {% endif %}
+
+          <div class="flex items-center gap-0.5">
+            {% if job.status == 'completed' and job.output_file %}
+            <div class="tooltip tooltip-top" data-tip="Télécharger PES">
+              <a href="{% url 'conversions:download' job.id %}" class="btn btn-ghost btn-xs btn-square">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+              </a>
+            </div>
+            {% endif %}
+
+            {% if job.original_file %}
+            <div class="tooltip tooltip-top" data-tip="Reconvertir">
+              <form method="post" action="{% url 'conversions:reconvert' job.id %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-ghost btn-xs btn-square">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                </button>
+              </form>
+            </div>
+            {% endif %}
+          </div>
         </div>
       </div>
 
@@ -201,19 +201,17 @@
   {% endif %}
 
   {% else %}
-  <div class="card bg-base-100 shadow-sm border border-base-200">
-    <div class="card-body items-center text-center py-16 gap-4">
-      <div class="text-5xl">🧵</div>
-      {% if status_filter or format_filter or date_filter or search_query %}
-      <h2 class="text-lg font-semibold">Aucune conversion ne correspond</h2>
-      <p class="text-sm text-base-content/50">Essayez de modifier les filtres ou la recherche.</p>
-      <a href="{% url 'conversions:history' %}" class="btn btn-ghost btn-sm mt-1">Effacer tout</a>
-      {% else %}
-      <h2 class="text-lg font-semibold">Aucune conversion pour l'instant</h2>
-      <p class="text-sm text-base-content/50">Uploadez un fichier SVG, PNG ou PDF pour commencer.</p>
-      <a href="{% url 'conversions:upload' %}" class="btn btn-primary btn-sm mt-2">Démarrer une conversion</a>
-      {% endif %}
-    </div>
+  <div class="sf-panel flex flex-col items-center text-center py-16 gap-4">
+    <div class="text-5xl">🧵</div>
+    {% if status_filter or format_filter or date_filter or search_query %}
+    <h2 class="font-display font-semibold text-lg">Aucune conversion ne correspond</h2>
+    <p class="text-sm text-base-content/50">Essayez de modifier les filtres ou la recherche.</p>
+    <a href="{% url 'conversions:history' %}" class="btn btn-ghost btn-sm mt-1">Effacer tout</a>
+    {% else %}
+    <h2 class="font-display font-semibold text-lg">Aucune conversion pour l'instant</h2>
+    <p class="text-sm text-base-content/50">Uploadez un fichier SVG, PNG, JPEG, WebP ou PDF pour commencer.</p>
+    <a href="{% url 'conversions:upload' %}" class="btn btn-primary btn-sm mt-2">Démarrer une conversion</a>
+    {% endif %}
   </div>
   {% endif %}
 

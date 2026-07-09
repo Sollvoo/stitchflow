@@ -5,14 +5,14 @@
   <div class="w-full max-w-md flex flex-col gap-4">
 
     <!-- Informations personnelles -->
-    <div class="card bg-base-100 shadow-lg">
-      <div class="card-body gap-5">
+    <div class="sf-panel">
+      <div class="p-8 flex flex-col gap-5">
 
         <div class="text-center">
           <div class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-2xl mx-auto mb-2 font-bold text-primary">
             {{ user.first_name|slice:":1"|upper|default:"?" }}
           </div>
-          <h1 class="text-xl font-bold">Mon profil</h1>
+          <h1 class="font-display font-bold text-xl">Mon profil</h1>
           <p class="text-sm text-base-content/50 mt-0.5">{{ user.email }}</p>
         </div>
 
@@ -47,9 +47,9 @@
     </div>
 
     <!-- Machine -->
-    <div class="card bg-base-100 shadow-lg">
-      <div class="card-body gap-3">
-        <h2 class="font-semibold text-base">Ma machine</h2>
+    <div class="sf-stitch-card">
+      <div class="p-6 flex flex-col gap-3">
+        <h2 class="font-display font-semibold text-base">Ma machine</h2>
         <a href="{% url 'users:profile_machine' %}" class="flex items-center justify-between p-3 rounded-lg hover:bg-base-200 transition-colors group">
           <div>
             <p class="text-sm font-medium">{{ user.profile.get_machine_model_display|default:"Brother PR1050X" }}</p>
@@ -63,9 +63,9 @@
     </div>
 
     <!-- Sécurité -->
-    <div class="card bg-base-100 shadow-lg">
-      <div class="card-body gap-3">
-        <h2 class="font-semibold text-base">Sécurité</h2>
+    <div class="sf-stitch-card">
+      <div class="p-6 flex flex-col gap-3">
+        <h2 class="font-display font-semibold text-base">Sécurité</h2>
 
         <a href="{% url 'users:change_email' %}" class="flex items-center justify-between p-3 rounded-lg hover:bg-base-200 transition-colors group">
           <div>

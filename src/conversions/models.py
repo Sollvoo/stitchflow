@@ -51,6 +51,7 @@ class ConversionJob(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        indexes = [models.Index(fields=['-created_at'])]
 
     def __str__(self) -> str:
         return f"ConversionJob({self.id}, {self.status})"
