@@ -29,6 +29,7 @@ LOGOUT_REDIRECT_URL = '/'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'core.middleware.NoStoreHtmlMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -87,6 +88,10 @@ STATIC_ROOT = BASE_DIR.parent / 'staticfiles'
 STATICFILES_DIRS = [
     BASE_DIR / 'frontend' / 'static',
 ]
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
 
 # Media files (uploads and conversion outputs) — kept at project root
 MEDIA_URL = '/media/'

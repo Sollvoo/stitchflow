@@ -2,7 +2,7 @@
 Validation supplémentaire des fichiers SVG.
 Utilisé en complément de la validation du formulaire.
 """
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 from pathlib import Path
 
 from django.core.exceptions import ValidationError

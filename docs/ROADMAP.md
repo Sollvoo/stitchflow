@@ -459,3 +459,29 @@ Objectif : remplacer le spinner + barre indéterminée par un suivi réel de la 
 - [x] Instrumentation `logger.debug('[timing] ...')` par étape du pipeline (Inkscape prep, tri/couleurs, Ink/Stitch CLI) — mesure objective pour cibler une future optimisation, aucune régression qualité (benchmark 95.4/100 confirmé après implémentation)
 - [x] Vérification ciblée de `generate_pes_preview()` : déjà un rendu de vrais points de broderie (pas un simple remplissage vectoriel) — conservé tel quel
 - [ ] **Suivi futur** : analyser les logs `[timing]` sur des cas réels pour identifier objectivement le goulot d'étranglement (cascade de vectorisation VTracer→potrace→Inkscape suspectée) avant toute optimisation de performance ciblée
+
+---
+
+## Audit sécurité & performances — Sessions 1 et 2 ✅
+
+### Session 1 ✅ (commit `0f110b3`)
+
+- [x] `settings.py` : SECRET_KEY sans default, DEBUG=False par défaut, headers HTTPS, cache Redis (DB 1), sessions Redis, CONN_MAX_AGE=60
+- [x] `settings_desktop.py` : LocMemCache + SESSION_ENGINE db (Redis absent en desktop)
+- [x] `electron/main.js` : execSync→execFileSync, shell.openExternal filtré protocole, toggleDevTools conditionné à !app.isPackaged, sandbox:true
+- [x] `vite.config.js` : emptyOutDir:true ; `package.json` : "private":true
+- [x] `models.py` : Index sur `-created_at` + migration 0010
+- [x] `views.py` : paginator.count (suppression double COUNT), `.iterator(chunk_size=500)` sur ExportCSVView
+
+### Session 2 ✅ (cette session)
+
+- [x] **defusedxml** : `validation.py` + `svg_utils.py` + import inline views.py → protection XXE/billion-laughs
+- [x] **Sanitize error_message** : catch-all `except Exception` dans `tasks.py` → `logger.exception()` + message générique (pas de stack trace pour l'utilisateur)
+- [x] **mktemp → mkstemp** : `views.py` L440 → suppression race condition TOCTOU
+- [x] **Content-Disposition RFC 5987** : `JobDownloadView` + `SvgDownloadView` → `filename*=UTF-8''...` pour noms non-ASCII
+- [x] **Validation excluded_colors** : format hex `#RRGGBB`, max 200 chars, rejet silencieux des invalides
+- [x] **Pillow OOM** : `png_processing.py` → numpy sur `getdata()` (×4 sites), resize max 2000px dans `preprocess_image()`
+- [x] **JobOwnerMixin** : `views.py` → vérification ownership sur 15 vues (anonyme = desktop autorisé)
+- [x] **Rate limiting** : `django-ratelimit` → `UnifiedUploadView` 10/min, 3 vues Analyze 30/min
+- [x] **Whitenoise** : `settings.py` → `WhiteNoiseMiddleware` + `CompressedManifestStaticFilesStorage`
+- [x] **pip-audit + npm audit** : 0 CVE Python, 0 CVE npm

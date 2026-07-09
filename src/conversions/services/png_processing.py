@@ -11,6 +11,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+import numpy as np
 from PIL import Image, ImageEnhance, ImageFilter
 
 logger = logging.getLogger(__name__)
@@ -144,18 +145,14 @@ def remove_background(path: Path) -> Path:
 
 def _remove_background_pillow(path: Path) -> Path:
     """Fallback : supprime les pixels proches du blanc via seuillage simple."""
-    with Image.open(path).convert("RGBA") as img:
-        data = img.getdata()
-        new_data = []
-        for r, g, b, a in data:
-            if r > 230 and g > 230 and b > 230:
-                new_data.append((255, 255, 255, 0))
-            else:
-                new_data.append((r, g, b, a))
-        img.putdata(new_data)
-        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-        img.save(tmp.name, "PNG")
-        tmp.close()
+    with Image.open(path) as src:
+        arr = np.array(src.convert("RGBA"))  # (H, W, 4) uint8
+    white = (arr[:, :, 0] > 230) & (arr[:, :, 1] > 230) & (arr[:, :, 2] > 230)
+    arr[white, 3] = 0
+    result = Image.fromarray(arr, "RGBA")
+    tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+    result.save(tmp.name, "PNG")
+    tmp.close()
     return Path(tmp.name)
 
 
@@ -167,6 +164,9 @@ def preprocess_image(path: Path) -> Path:
     Retourne le chemin d'un fichier temporaire PNG à supprimer par l'appelant.
     """
     with Image.open(path) as img:
+        _MAX_DIM = 2000
+        if img.width > _MAX_DIM or img.height > _MAX_DIM:
+            img.thumbnail((_MAX_DIM, _MAX_DIM), Image.LANCZOS)
         # Aplatir le canal alpha sur fond blanc avant convert('RGB') :
         # sans ça, les pixels transparents deviennent noirs (bug fond noir SVG).
         if img.mode in ("RGBA", "LA", "P"):
@@ -225,20 +225,14 @@ _ENTROPY_PHOTO_MIN = 200.0  # variance locale ≥ 200 → photo (dégradés, bru
 
 def _compute_local_variance(img: Image.Image, block_size: int = 8) -> float:
     """Variance moyenne par blocs block_size×block_size (proxy d'entropie locale)."""
-    gray = img.convert("L")
-    w, h = gray.size
-    pixels = list(gray.getdata())
+    arr = np.array(img.convert("L"), dtype=np.float32)  # (H, W)
+    h, w = arr.shape
     variances = []
     for y in range(0, h - block_size + 1, block_size):
         for x in range(0, w - block_size + 1, block_size):
-            block = [
-                pixels[(y + by) * w + (x + bx)]
-                for by in range(block_size)
-                for bx in range(block_size)
-            ]
-            mean = sum(block) / len(block)
-            variances.append(sum((p - mean) ** 2 for p in block) / len(block))
-    return sum(variances) / len(variances) if variances else 0.0
+            block = arr[y:y + block_size, x:x + block_size]
+            variances.append(float(block.var()))
+    return float(np.mean(variances)) if variances else 0.0
 
 
 def _detect_image_type(path: Path, n_colors: int) -> str:
@@ -500,10 +494,8 @@ def _quantize_to_n_colors(path: Path, n_colors: int) -> Path:
 
 def _detect_fine_details(img: Image.Image) -> bool:
     """Retourne True si l'image contient du texte fin ou des détails à bords nets."""
-    gray = img.convert("L")
-    edges = gray.filter(ImageFilter.FIND_EDGES)
-    pixels = list(edges.getdata())
-    edge_ratio = sum(1 for p in pixels if p > 30) / max(1, len(pixels))
+    arr = np.array(img.convert("L").filter(ImageFilter.FIND_EDGES))
+    edge_ratio = float((arr > 30).sum()) / max(1, arr.size)
     return edge_ratio > 0.15
 
 
@@ -891,12 +883,23 @@ def _vectorize_potrace(
                 "[DEBUG potrace] clusters détectés : %s",
                 [(f"#{r:02x}{g:02x}{b:02x}", len(cs)) for (r, g, b), cs in clusters],
             )
-            pixel_data = list(rgb.getdata())
+            pixel_flat = np.array(rgb).reshape(-1, 3)  # (N, 3) uint8
+            # Encode chaque pixel en uint32 pour l'appartenance vectorisée aux clusters
+            pixel_packed = (
+                pixel_flat[:, 0].astype(np.uint32) << 16
+                | pixel_flat[:, 1].astype(np.uint32) << 8
+                | pixel_flat[:, 2].astype(np.uint32)
+            )
 
             for idx, (center, color_set) in enumerate(clusters):
                 r, g_val, b = center
                 hex_color = f"#{r:02x}{g_val:02x}{b:02x}"
-                black_count = sum(1 for p in pixel_data if p in color_set)
+                cluster_packed = np.array(
+                    [(cr << 16 | cg << 8 | cb) for cr, cg, cb in color_set],
+                    dtype=np.uint32,
+                )
+                in_cluster = np.isin(pixel_packed, cluster_packed)
+                black_count = int(in_cluster.sum())
                 logger.info(
                     "[DEBUG potrace] cluster %d : %s → %d pixels noirs",
                     idx,
@@ -904,9 +907,8 @@ def _vectorize_potrace(
                     black_count,
                 )
 
-                mask_data = [0 if p in color_set else 255 for p in pixel_data]
-                mask = Image.new("L", (width, height))
-                mask.putdata(mask_data)
+                mask_arr = np.where(in_cluster, 0, 255).astype(np.uint8)
+                mask = Image.fromarray(mask_arr.reshape(height, width), mode="L")
                 mask_1bit = _smooth_mask_to_1bit(mask)
 
                 pbm_path = tmpdir_path / f"mask_{idx}.pbm"

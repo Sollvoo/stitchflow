@@ -1,18 +1,24 @@
 import csv
 import json
+import os
+import re
 import shutil
 import tempfile
 import threading
+import urllib.parse
 from collections import Counter
 from pathlib import Path
 
 from django.conf import settings
+from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
+from django.utils.decorators import method_decorator
 from django.views.generic import CreateView, DetailView, View
 from django.contrib import messages
 from django.http import FileResponse, Http404, HttpResponse, HttpRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
+from django_ratelimit.decorators import ratelimit
 from PIL import Image
 
 from .models import ConversionJob
@@ -28,6 +34,19 @@ def _dispatch(task_fn, job_id: str) -> None:
         threading.Thread(target=task_fn, args=[job_id], daemon=True).start()
 
 
+class JobOwnerMixin:
+    """Vérifie l'ownership du job uniquement pour les utilisateurs authentifiés.
+    En mode desktop (utilisateur anonyme), laisse passer sans vérification."""
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_authenticated:
+            job = get_object_or_404(ConversionJob, pk=kwargs.get('pk'))
+            if job.user is not None and job.user != request.user:
+                raise PermissionDenied
+        return super().dispatch(request, *args, **kwargs)
+
+
+@method_decorator(ratelimit(key='ip', rate='10/m', method='POST', block=True), name='post')
 class UnifiedUploadView(View):
     _FORMAT_TO_FORM: dict[str, type] = {
         'svg': SVGUploadForm,
@@ -56,9 +75,12 @@ class UnifiedUploadView(View):
         if form.is_valid():
             job = self._save_job(form, request.user if request.user.is_authenticated else None)
             excluded_colors_raw = request.POST.get('excluded_colors', '').strip()
-            if excluded_colors_raw:
-                job.conversion_metadata = {'excluded_colors': excluded_colors_raw}
-                job.save(update_fields=['conversion_metadata'])
+            if excluded_colors_raw and len(excluded_colors_raw) <= 200:
+                _hex = re.compile(r'^#[0-9a-fA-F]{6}$')
+                valid_colors = [c.strip() for c in excluded_colors_raw.split(',') if _hex.match(c.strip())]
+                if valid_colors:
+                    job.conversion_metadata = {'excluded_colors': ','.join(valid_colors)}
+                    job.save(update_fields=['conversion_metadata'])
             _dispatch(process_conversion_job, str(job.id))
             messages.success(request, 'Fichier reçu. La conversion est en cours.')
             return redirect(reverse('conversions:detail', kwargs={'pk': job.id}))
@@ -262,7 +284,7 @@ class HistoryView(View):
         })
 
 
-class ReconvertView(View):
+class ReconvertView(JobOwnerMixin, View):
     """Crée un nouveau job à partir du fichier source d'un job existant."""
 
     def post(self, request: HttpRequest, pk) -> HttpResponse:
@@ -340,7 +362,7 @@ class JobDetailView(DetailView):
         return ctx
 
 
-class JobStatusView(View):
+class JobStatusView(JobOwnerMixin, View):
     """Renvoie uniquement le fragment de statut (utilisé par HTMX)."""
 
     def get(self, request, pk):
@@ -417,6 +439,7 @@ def _suggest_width_from_svg(root) -> int:
     return max(20, min(360, int(width_mm)))
 
 
+@method_decorator(ratelimit(key='ip', rate='30/m', method='POST', block=True), name='post')
 class AnalyzeSVGView(View):
     """Analyse un SVG uploadé et retourne un fragment HTMX avec suggestions et avertissements."""
 
@@ -426,7 +449,7 @@ class AnalyzeSVGView(View):
             return HttpResponse('', content_type='text/html')
 
         try:
-            import xml.etree.ElementTree as ET
+            import defusedxml.ElementTree as ET
             from .services.svg_utils import (
                 get_svg_dimensions_mm,
                 _count_svg_unique_fills,
@@ -437,9 +460,11 @@ class AnalyzeSVGView(View):
             root = ET.fromstring(content)
             suggested_width = _suggest_width_from_svg(root)
 
-            tmp_svg = Path(tempfile.mktemp(suffix='.svg'))
-            tmp_svg.write_text(content, encoding='utf-8')
+            _fd, _tmp_path = tempfile.mkstemp(suffix='.svg')
+            os.close(_fd)
+            tmp_svg = Path(_tmp_path)
             try:
+                tmp_svg.write_text(content, encoding='utf-8')
                 width_mm, height_mm = get_svg_dimensions_mm(tmp_svg)
                 n_unique_colors = _count_svg_unique_fills(tmp_svg)
             finally:
@@ -502,6 +527,7 @@ class AnalyzeSVGView(View):
         })
 
 
+@method_decorator(ratelimit(key='ip', rate='30/m', method='POST', block=True), name='post')
 class AnalyzePNGView(View):
     """Analyse rapide d'un PNG et retourne un fragment HTMX avec suggestions de paramètres."""
 
@@ -635,6 +661,7 @@ class AnalyzePNGView(View):
         })
 
 
+@method_decorator(ratelimit(key='ip', rate='30/m', method='POST', block=True), name='post')
 class AnalyzePDFView(View):
     """
     Analyse rapide d'un PDF uploadé : détecte vectoriel vs scanné via pdftocairo,
@@ -713,7 +740,7 @@ class AnalyzePDFView(View):
         })
 
 
-class JobApiStatusView(View):
+class JobApiStatusView(JobOwnerMixin, View):
     """Retourne le statut et les métadonnées de conversion au format JSON (pour tests d'intégration)."""
 
     def get(self, request: HttpRequest, pk: str) -> JsonResponse:
@@ -728,7 +755,7 @@ class JobApiStatusView(View):
         })
 
 
-class JobDownloadView(View):
+class JobDownloadView(JobOwnerMixin, View):
     """Sert le fichier .PES généré avec le nom original du SVG."""
 
     def get(self, request, pk):
@@ -744,11 +771,12 @@ class JobDownloadView(View):
         filename = f"{stem}{ext}"
 
         response = FileResponse(job.output_file.open('rb'), as_attachment=True)
-        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        _enc = urllib.parse.quote(filename, safe='')
+        response['Content-Disposition'] = f"attachment; filename=\"{filename}\"; filename*=UTF-8''{_enc}"
         return response
 
 
-class SvgDownloadView(View):
+class SvgDownloadView(JobOwnerMixin, View):
     """Sert le SVG vectorisé (ou le SVG source pour un upload SVG direct)."""
 
     def get(self, request, pk):
@@ -769,7 +797,9 @@ class SvgDownloadView(View):
             as_attachment=True,
             content_type='image/svg+xml',
         )
-        response['Content-Disposition'] = f'attachment; filename="{stem}.svg"'
+        _svg_name = f"{stem}.svg"
+        _enc = urllib.parse.quote(_svg_name, safe='')
+        response['Content-Disposition'] = f"attachment; filename=\"{_svg_name}\"; filename*=UTF-8''{_enc}"
         return response
 
 
@@ -829,7 +859,7 @@ def _snapshot_before_edit(job: ConversionJob, svg_path: Path) -> None:
     job.save(update_fields=['conversion_metadata'])
 
 
-class SvgRemoveColorView(View):
+class SvgRemoveColorView(JobOwnerMixin, View):
     """Supprime tous les éléments d'une couleur donnée du SVG vectorisé."""
 
     def post(self, request: HttpRequest, pk) -> HttpResponse:
@@ -853,7 +883,7 @@ class SvgRemoveColorView(View):
         return _render_svg_editor_response(request, job)
 
 
-class SvgMergeColorsView(View):
+class SvgMergeColorsView(JobOwnerMixin, View):
     """Fusionne deux couleurs du SVG vectorisé (source → target)."""
 
     def post(self, request: HttpRequest, pk) -> HttpResponse:
@@ -878,7 +908,7 @@ class SvgMergeColorsView(View):
         return _render_svg_editor_response(request, job)
 
 
-class SvgChangeColorView(View):
+class SvgChangeColorView(JobOwnerMixin, View):
     """Remplace une couleur SVG par un fil Brother choisi par l'utilisateur."""
 
     def post(self, request: HttpRequest, pk) -> HttpResponse:
@@ -905,7 +935,7 @@ class SvgChangeColorView(View):
         return _render_svg_editor_response(request, job)
 
 
-class SvgUndoView(View):
+class SvgUndoView(JobOwnerMixin, View):
     """Annule la dernière opération d'édition SVG."""
 
     def post(self, request: HttpRequest, pk) -> HttpResponse:
@@ -925,7 +955,7 @@ class SvgUndoView(View):
         return _render_svg_editor_response(request, job)
 
 
-class SvgRedoView(View):
+class SvgRedoView(JobOwnerMixin, View):
     """Rétablit la dernière opération annulée."""
 
     def post(self, request: HttpRequest, pk) -> HttpResponse:
@@ -945,7 +975,7 @@ class SvgRedoView(View):
         return _render_svg_editor_response(request, job)
 
 
-class SvgResetView(View):
+class SvgResetView(JobOwnerMixin, View):
     """Restaure le SVG à son état initial (avant toute édition)."""
 
     def post(self, request: HttpRequest, pk) -> HttpResponse:
@@ -965,7 +995,7 @@ class SvgResetView(View):
         return _render_svg_editor_response(request, job)
 
 
-class SvgReorderColorsView(View):
+class SvgReorderColorsView(JobOwnerMixin, View):
     """Réordonne les couches de couleurs du SVG (ordre de broderie)."""
 
     def post(self, request: HttpRequest, pk) -> HttpResponse:
@@ -993,7 +1023,7 @@ class SvgReorderColorsView(View):
         return _render_svg_editor_response(request, job)
 
 
-class SvgSetStitchTypeView(View):
+class SvgSetStitchTypeView(JobOwnerMixin, View):
     """Définit le type de point (auto_fill / running_stitch) pour une couleur."""
 
     def post(self, request: HttpRequest, pk) -> HttpResponse:
@@ -1018,7 +1048,7 @@ class SvgSetStitchTypeView(View):
         return _render_svg_editor_response(request, job)
 
 
-class SvgSetDensityView(View):
+class SvgSetDensityView(JobOwnerMixin, View):
     """Définit la densité de point (mm entre rangées) pour une couleur."""
 
     def post(self, request: HttpRequest, pk) -> HttpResponse:
@@ -1047,7 +1077,7 @@ class SvgSetDensityView(View):
         return _render_svg_editor_response(request, job)
 
 
-class SvgValidateView(View):
+class SvgValidateView(JobOwnerMixin, View):
     """Valide le SVG édité et lance la conversion PES (finalize_svg_to_pes)."""
 
     def post(self, request: HttpRequest, pk) -> HttpResponse:

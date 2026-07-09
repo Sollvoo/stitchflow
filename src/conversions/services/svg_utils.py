@@ -9,7 +9,7 @@ import re
 import shutil
 import subprocess
 import tempfile
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 from pathlib import Path
 
 logger = logging.getLogger(__name__)

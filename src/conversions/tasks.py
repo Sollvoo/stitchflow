@@ -389,10 +389,10 @@ def process_conversion_job(job_id: str) -> None:
         job.error_message = error_msg
         job.save(update_fields=['status', 'error_message', 'updated_at'])
 
-    except Exception as exc:
-        logger.error("Erreur inattendue job %s : %s", job_id, exc)
+    except Exception:
+        logger.exception("Erreur inattendue job %s", job_id)
         job.status = ConversionJob.Status.FAILED
-        job.error_message = str(exc)
+        job.error_message = "Une erreur interne est survenue. Veuillez réessayer."
         job.save(update_fields=['status', 'error_message', 'updated_at'])
 
     finally:
@@ -458,10 +458,10 @@ def finalize_svg_to_pes(job_id: str) -> None:
         job.error_message = error_msg
         job.save(update_fields=['status', 'error_message', 'updated_at'])
 
-    except Exception as exc:
-        logger.error("Erreur inattendue finalisation job %s : %s", job_id, exc)
+    except Exception:
+        logger.exception("Erreur inattendue finalisation job %s", job_id)
         job.status = ConversionJob.Status.FAILED
-        job.error_message = str(exc)
+        job.error_message = "Une erreur interne est survenue. Veuillez réessayer."
         job.save(update_fields=['status', 'error_message', 'updated_at'])
 
     finally:
