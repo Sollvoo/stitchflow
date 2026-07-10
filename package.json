@@ -54,6 +54,7 @@
     },
     "dmg": {
       "title": "StitchFlow",
+      "artifactName": "${productName}-${arch}.dmg",
       "contents": [
         { "x": 130, "y": 220 },
         { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
@@ -66,6 +67,7 @@
       ]
     },
     "nsis": {
+      "artifactName": "${productName}-Setup.exe",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
     }

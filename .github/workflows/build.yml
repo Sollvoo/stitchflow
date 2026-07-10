@@ -1,0 +1,173 @@
+name: Build Desktop App
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # ─── macOS Apple Silicon (ARM64) ────────────────────────────────────────────
+  build-mac-arm:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Create venv + install Python deps
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -r requirements.txt
+
+      - name: Download vtracer (ARM64 macOS)
+        run: |
+          curl -fsSL -o /tmp/vtracer.tar.gz \
+            https://github.com/visioncortex/vtracer/releases/download/0.6.4/vtracer-aarch64-apple-darwin.tar.gz
+          mkdir -p vendor
+          tar -xzf /tmp/vtracer.tar.gz -C vendor/
+          chmod +x vendor/vtracer
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Vite frontend
+        run: |
+          cd src/frontend
+          npm install
+          npm run build
+
+      - name: Install root npm deps
+        run: npm ci
+
+      - name: Build macOS ARM64 DMG
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          ELECTRON_SKIP_NOTARIZE: '1'
+        run: npm run build:mac-arm
+
+      - name: Upload to GitHub Release (tag only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          name: StitchFlow ${{ github.ref_name }}
+          files: dist/StitchFlow-arm64.dmg
+          fail_on_unmatched_files: false
+
+  # ─── macOS Intel (x64) ──────────────────────────────────────────────────────
+  build-mac-intel:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Create venv + install Python deps
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -r requirements.txt
+
+      - name: Download vtracer (Intel macOS)
+        run: |
+          curl -fsSL -o /tmp/vtracer.tar.gz \
+            https://github.com/visioncortex/vtracer/releases/download/0.6.4/vtracer-x86_64-apple-darwin.tar.gz
+          mkdir -p vendor
+          tar -xzf /tmp/vtracer.tar.gz -C vendor/
+          chmod +x vendor/vtracer
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Vite frontend
+        run: |
+          cd src/frontend
+          npm install
+          npm run build
+
+      - name: Install root npm deps
+        run: npm ci
+
+      - name: Build macOS Intel DMG
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          ELECTRON_SKIP_NOTARIZE: '1'
+        run: npm run build:mac-intel
+
+      - name: Upload to GitHub Release (tag only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          name: StitchFlow ${{ github.ref_name }}
+          files: dist/StitchFlow-x64.dmg
+          fail_on_unmatched_files: false
+
+  # ─── Windows x64 ────────────────────────────────────────────────────────────
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Create venv + install Python deps
+        run: |
+          python -m venv .venv
+          .venv\Scripts\pip install --upgrade pip
+          .venv\Scripts\pip install -r requirements.txt
+
+      - name: Download vtracer (Windows x64)
+        run: |
+          Invoke-WebRequest `
+            -Uri "https://github.com/visioncortex/vtracer/releases/download/0.6.4/vtracer-x86_64-pc-windows-msvc.zip" `
+            -OutFile "vtracer.zip"
+          New-Item -ItemType Directory -Force -Path vendor | Out-Null
+          Expand-Archive -Path vtracer.zip -DestinationPath vendor_tmp -Force
+          # Handle whether .exe is at root or in a subfolder
+          $exe = Get-ChildItem -Path vendor_tmp -Recurse -Filter vtracer.exe | Select-Object -First 1
+          if ($exe) { Move-Item $exe.FullName vendor\vtracer.exe }
+          Remove-Item vendor_tmp -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item vtracer.zip
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Vite frontend
+        shell: bash
+        run: cd src/frontend && npm install && npm run build
+
+      - name: Install root npm deps
+        run: npm ci
+
+      - name: Build Windows installer
+        run: npm run build:win
+
+      - name: Upload to GitHub Release (tag only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          name: StitchFlow ${{ github.ref_name }}
+          files: dist/StitchFlow-Setup.exe
+          fail_on_unmatched_files: false

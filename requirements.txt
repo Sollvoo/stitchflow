@@ -1,4 +1,4 @@
-# StitchFlow — dépendances Python
+# StitchFlow Desktop — dépendances Python
 # pip install -r requirements.txt
 
 # Core Django
@@ -6,14 +6,19 @@ django>=6.0
 python-decouple>=3.8
 dj-database-url>=2.0
 django-vite>=3.0
+django-ratelimit>=4.1
+whitenoise>=6.6
 
 # Broderie
 pyembroidery>=1.5
 
 # Images et vectorisation
 pillow>=10.0
+numpy>=1.24
 vtracer>=0.6
 pdf2image>=1.17
 
-# Suppression fond IA (optionnel — peut échouer sur certains envs, le pipeline a un fallback Pillow)
-rembg>=2.0
+# Sécurité
+defusedxml>=0.7
+
+# rembg>=2.0  # optionnel — suppression fond IA (fallback Pillow si absent)

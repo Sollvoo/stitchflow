@@ -351,21 +351,24 @@ Objectif : transformer StitchFlow en application desktop Mac (ARM64 prioritaire,
 - [x] `netlify/index.html` — landing page de téléchargement (Netlify gratuit, bouton → GitHub Release)
 - [x] `MIGRATION.md` — checklist complète des tâches restantes
 
-### 12b — Tests & polish desktop (à faire)
+### 12b — Tests & polish desktop
 
 - [ ] Tester `npm start` sur Mac Apple Silicon — vérifier splash → app → conversion complète
-- [ ] Créer l'icône `assets/icon.icns` (1024×1024 PNG → .icns) et `assets/icon.ico` (Windows)
-- [ ] Builder et tester le `.dmg` Mac ARM64 : `npm run build:mac-arm`
+- [x] Icônes : `assets/icon.icns` et `assets/icon.ico` déjà présents (`assets/brand/icon-*.png`)
+- [x] GitHub Actions CI : `.github/workflows/build.yml` — 3 jobs (mac-arm, mac-intel, windows) sur tag `v*.*.*`
+- [x] `package.json` : `artifactName` fixe → `StitchFlow-arm64.dmg`, `StitchFlow-x64.dmg`, `StitchFlow-Setup.exe`
+- [x] `requirements.txt` mis à jour : defusedxml, numpy, django-ratelimit, whitenoise ajoutés
 - [ ] Déployer la landing page Netlify (brancher `Sollvoo/stitchflow` sur app.netlify.com, publish dir: `netlify/`)
 - [ ] Pousser le tag `v1.0.0` → GitHub Actions génère les .dmg et .exe automatiquement
 - [ ] Tester l'installation depuis le .dmg sur Mac Apple Silicon (Clic droit → Ouvrir pour contourner Gatekeeper)
 - [ ] Vérifier le pipeline complet en mode desktop : SVG → PES, PNG → PES, HTMX polling
 
-### 12c — Distribution & livraison (à faire)
+### 12c — Distribution & livraison
 
-- [ ] Partager le lien Netlify avec l'utilisatrice (pas de compte requis pour télécharger)
-- [ ] Tester sur Mac Intel (build `npm run build:mac-intel`)
-- [ ] Tester sur Windows (via GitHub Actions CI)
+- [x] Landing page Netlify mise à jour : bouton Windows ajouté, URLs corrigées vers `Sollvoo/stitchflow`, note beta privée
+- [ ] Déployer Netlify (brancher repo sur app.netlify.com, publish dir: `netlify/`)
+- [ ] Tester sur Mac Intel (build `npm run build:mac-intel` ou via CI)
+- [ ] Inviter les beta testeurs comme collaborateurs Read sur `Sollvoo/stitchflow` → ils téléchargent depuis les Releases
 
 ---
 
