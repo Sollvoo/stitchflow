@@ -1,6 +1,7 @@
 """
 Utilitaires pour la manipulation de fichiers SVG.
 """
+from __future__ import annotations
 
 import logging
 import math
@@ -10,6 +11,7 @@ import shutil
 import subprocess
 import tempfile
 import defusedxml.ElementTree as ET
+import xml.etree.ElementTree as _stdlib_ET  # register_namespace n'est pas dans defusedxml
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -109,7 +111,7 @@ _CSS_PROPS_TO_INLINE: frozenset[str] = frozenset([
 
 def _register_svg_namespaces() -> None:
     for prefix, uri in _SVG_NAMESPACES.items():
-        ET.register_namespace(prefix, uri)
+        _stdlib_ET.register_namespace(prefix, uri)
 
 
 def _parse_length_mm(value: str) -> float | None:

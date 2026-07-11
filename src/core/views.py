@@ -7,6 +7,11 @@ from django.views.generic import TemplateView
 from .models import WaitlistEmail
 
 
+def ratelimited_view(request, exception=None):
+    """Retourne 429 quand le rate limit est atteint (utilisé par RatelimitMiddleware)."""
+    return HttpResponse("Trop de requêtes. Veuillez réessayer dans quelques instants.", status=429)
+
+
 class HomeView(TemplateView):
     template_name = 'home.html'
 

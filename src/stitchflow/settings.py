@@ -30,6 +30,7 @@ LOGOUT_REDIRECT_URL = '/'
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
+    'django_ratelimit.middleware.RatelimitMiddleware',
     'core.middleware.NoStoreHtmlMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -38,6 +39,8 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+RATELIMIT_VIEW = 'core.views.ratelimited_view'
 
 ROOT_URLCONF = 'stitchflow.urls'
 
