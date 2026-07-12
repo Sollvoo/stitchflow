@@ -15,6 +15,9 @@
   },
   "author": "Hugo Bonnet",
   "license": "MIT",
+  "dependencies": {
+    "electron-updater": "^6.3.0"
+  },
   "devDependencies": {
     "electron": "^36.0.0",
     "electron-builder": "^25.0.0"
@@ -70,6 +73,11 @@
       "artifactName": "${productName}-Setup.exe",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Sollvoo",
+      "repo": "stitchflow"
     }
   }
 }

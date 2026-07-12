@@ -3,6 +3,7 @@ const { spawn, execFileSync } = require('child_process')
 const path = require('path')
 const net = require('net')
 const fs = require('fs')
+const { autoUpdater } = require('electron-updater')
 
 const DJANGO_DEFAULT_PORT = 8765
 const DJANGO_STARTUP_RETRIES = 60
@@ -260,7 +261,50 @@ function showInkstitchMissingDialog() {
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
+function setupAutoUpdater() {
+  autoUpdater.autoDownload = false
+  autoUpdater.autoInstallOnAppQuit = true
+
+  autoUpdater.on('update-available', (info) => {
+    dialog.showMessageBox({
+      type: 'info',
+      title: 'Mise à jour disponible',
+      message: `StitchFlow ${info.version} est disponible.`,
+      detail: 'Voulez-vous télécharger la mise à jour ? Elle sera installée au prochain redémarrage.',
+      buttons: ['Télécharger', 'Plus tard'],
+      defaultId: 0,
+    }).then(({ response }) => {
+      if (response === 0) autoUpdater.downloadUpdate()
+    })
+  })
+
+  autoUpdater.on('update-downloaded', () => {
+    dialog.showMessageBox({
+      type: 'info',
+      title: 'Mise à jour prête',
+      message: 'La mise à jour a été téléchargée.',
+      detail: 'StitchFlow va redémarrer pour appliquer la mise à jour.',
+      buttons: ['Redémarrer maintenant', 'Plus tard'],
+      defaultId: 0,
+    }).then(({ response }) => {
+      if (response === 0) autoUpdater.quitAndInstall()
+    })
+  })
+
+  autoUpdater.on('error', (err) => {
+    if (process.env.DEBUG_DJANGO) console.error('[updater]', err.message)
+  })
+
+  autoUpdater.checkForUpdates()
+}
+
 app.whenReady().then(async () => {
+  // Icône dock en mode dev (packagé : l'icône vient du bundle .app)
+  if (!app.isPackaged && process.platform === 'darwin') {
+    const iconPath = path.join(__dirname, '..', 'assets', 'brand', 'icon-256.png')
+    if (fs.existsSync(iconPath)) app.dock.setIcon(iconPath)
+  }
+
   djangoPort = await findFreePort(DJANGO_DEFAULT_PORT)
 
   // Vérifier les dépendances
@@ -289,6 +333,9 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow(djangoPort)
   })
+
+  // Vérifier les mises à jour uniquement dans l'app packagée
+  if (app.isPackaged) setupAutoUpdater()
 })
 
 app.on('window-all-closed', () => {
