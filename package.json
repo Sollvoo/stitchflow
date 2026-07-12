@@ -26,6 +26,7 @@
     "extends": null,
     "appId": "com.stitchflow.desktop",
     "productName": "StitchFlow",
+    "afterPack": "scripts/adhoc-sign-macos.js",
     "files": [
       "assets/**/*",
       "electron/**/*",
