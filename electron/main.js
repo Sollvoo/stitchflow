@@ -1,14 +1,18 @@
-const { app, BrowserWindow, dialog, shell, Menu } = require('electron')
+const { app, BrowserWindow, dialog, shell, Menu, session } = require('electron')
 const { spawn, execFileSync } = require('child_process')
+const http = require('http')
 const path = require('path')
 const net = require('net')
 const fs = require('fs')
 const { autoUpdater } = require('electron-updater')
 
 const DJANGO_DEFAULT_PORT = 8765
+const DJANGO_BIND_HOST = '127.0.0.1'
+const DJANGO_BROWSER_HOST = 'stitchflow.localhost'
 const DJANGO_STARTUP_RETRIES = 120
 const DJANGO_RETRY_INTERVAL_MS = 500
 
+app.commandLine.appendSwitch('host-resolver-rules', `MAP ${DJANGO_BROWSER_HOST} ${DJANGO_BIND_HOST}`)
 app.setName('StitchFlow')
 
 let djangoProcess = null
@@ -130,6 +134,10 @@ function getBackendEnv(port = null) {
   return env
 }
 
+function getDjangoBrowserUrl(port) {
+  return `http://${DJANGO_BROWSER_HOST}:${port}/`
+}
+
 function usefulEnv(env) {
   return {
     DJANGO_SETTINGS_MODULE: env.DJANGO_SETTINGS_MODULE,
@@ -170,6 +178,61 @@ async function waitForDjango(port, retries = DJANGO_STARTUP_RETRIES) {
   }
   lastBackendError = `Timeout: Django n'a pas répondu sur 127.0.0.1:${port}.`
   log('Django startup timeout', { port, retries, logFilePath })
+  return false
+}
+
+async function requestLocalDjango(port, pathname) {
+  return new Promise((resolve, reject) => {
+    const req = http.request({
+      hostname: '127.0.0.1',
+      port,
+      path: pathname,
+      method: 'GET',
+      timeout: 2000,
+    }, (res) => {
+      let body = ''
+      res.setEncoding('utf8')
+      res.on('data', chunk => { body += chunk })
+      res.on('end', () => resolve({
+        statusCode: res.statusCode,
+        headers: res.headers,
+        body: body.slice(0, 2000),
+      }))
+    })
+    req.on('timeout', () => {
+      req.destroy(new Error(`HTTP timeout on ${pathname}`))
+    })
+    req.on('error', reject)
+    req.end()
+  })
+}
+
+async function waitForDjangoHttp(port, retries = DJANGO_STARTUP_RETRIES) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const health = await requestLocalDjango(port, '/healthz/')
+      const home = await requestLocalDjango(port, '/')
+      log('Django HTTP probe', {
+        port,
+        attempt: i + 1,
+        healthStatus: health.statusCode,
+        homeStatus: home.statusCode,
+        homeLocation: home.headers.location,
+        homePreview: home.body.slice(0, 300),
+      })
+
+      if (health.statusCode === 200 && home.statusCode === 200) {
+        return true
+      }
+
+      lastBackendError = `Django a répondu, mais la page principale retourne HTTP ${home.statusCode}${home.headers.location ? ` vers ${home.headers.location}` : ''}.`
+    } catch (err) {
+      lastBackendError = err.message
+    }
+    await new Promise(r => setTimeout(r, DJANGO_RETRY_INTERVAL_MS))
+  }
+
+  log('Django HTTP readiness timeout', { port, retries, lastBackendError })
   return false
 }
 
@@ -286,10 +349,27 @@ function createWindow(port) {
 
   mainWindow.on('closed', () => { mainWindow = null })
 
+  mainWindow.webContents.on('did-start-loading', () => {
+    log('Window did-start-loading', { url: mainWindow.webContents.getURL() })
+  })
+  mainWindow.webContents.on('did-finish-load', () => {
+    log('Window did-finish-load', { url: mainWindow.webContents.getURL() })
+  })
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    lastBackendError = `${errorDescription} (${errorCode})`
+    log('Window did-fail-load', { errorCode, errorDescription, validatedURL, isMainFrame })
+  })
+  mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    log('Window console-message', { level, message, line, sourceId })
+  })
+
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     try {
       const parsed = new URL(url)
-      if (!url.startsWith('http://127.0.0.1') && ['https:', 'http:'].includes(parsed.protocol)) {
+      const isLocalDjango =
+        ['127.0.0.1', 'localhost', DJANGO_BROWSER_HOST].includes(parsed.hostname) &&
+        parsed.port === String(port)
+      if (!isLocalDjango && ['https:', 'http:'].includes(parsed.protocol)) {
         shell.openExternal(url)
       }
     } catch {}
@@ -297,6 +377,23 @@ function createWindow(port) {
   })
 
   buildMenu(port)
+}
+
+function setupLocalNavigationGuard(port) {
+  session.defaultSession.webRequest.onBeforeRequest({
+    urls: [
+      `https://127.0.0.1:${port}/*`,
+      `https://localhost:${port}/*`,
+      `https://${DJANGO_BROWSER_HOST}:${port}/*`,
+    ],
+  }, (details, callback) => {
+    const redirected = details.url
+      .replace(/^https:\/\/127\.0\.0\.1:/, `http://${DJANGO_BROWSER_HOST}:`)
+      .replace(/^https:\/\/localhost:/, `http://${DJANGO_BROWSER_HOST}:`)
+      .replace(new RegExp(`^https://${DJANGO_BROWSER_HOST.replace('.', '\\.')}:`), `http://${DJANGO_BROWSER_HOST}:`)
+    log('Rewriting local HTTPS navigation to HTTP', { from: details.url, to: redirected })
+    callback({ redirectURL: redirected })
+  })
 }
 
 function loadStartupError() {
@@ -485,11 +582,13 @@ app.whenReady().then(async () => {
 
   runMigrations()
   startDjango(djangoPort)
+  setupLocalNavigationGuard(djangoPort)
   createWindow(djangoPort)
 
   const ready = await waitForDjango(djangoPort)
-  if (ready && mainWindow) {
-    mainWindow.loadURL(`http://127.0.0.1:${djangoPort}/`)
+  const httpReady = ready ? await waitForDjangoHttp(djangoPort) : false
+  if (ready && httpReady && mainWindow) {
+    mainWindow.loadURL(getDjangoBrowserUrl(djangoPort))
   } else if (mainWindow) {
     loadStartupError()
   }

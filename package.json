@@ -1,6 +1,6 @@
 {
   "name": "stitchflow-desktop",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "private": true,
   "description": "StitchFlow Desktop - Convert SVG/PNG/PDF to embroidery PES files",
   "main": "electron/main.js",
@@ -73,9 +73,14 @@
     "dmg": {
       "title": "StitchFlow",
       "artifactName": "${productName}-${arch}.dmg",
+      "window": {
+        "width": 620,
+        "height": 420
+      },
+      "iconSize": 112,
       "contents": [
-        { "x": 130, "y": 220 },
-        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+        { "x": 170, "y": 190 },
+        { "x": 450, "y": 190, "type": "link", "path": "/Applications" }
       ]
     },
     "win": {

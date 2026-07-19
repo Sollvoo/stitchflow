@@ -67,7 +67,7 @@ jobs:
           dist-backend/stitchflow-backend/stitchflow-backend --port 8765 > "$RUNNER_TEMP/stitchflow-backend.log" 2>&1 &
           backend_pid=$!
           for i in {1..60}; do
-            if curl -fsS http://127.0.0.1:8765/healthz/; then
+            if curl -fsS http://127.0.0.1:8765/healthz/ && curl -fsS http://127.0.0.1:8765/ | grep -q "StitchFlow"; then
               kill "$backend_pid"
               wait "$backend_pid" || true
               exit 0
@@ -165,7 +165,7 @@ jobs:
           dist-backend/stitchflow-backend/stitchflow-backend --port 8765 > "$RUNNER_TEMP/stitchflow-backend.log" 2>&1 &
           backend_pid=$!
           for i in {1..60}; do
-            if curl -fsS http://127.0.0.1:8765/healthz/; then
+            if curl -fsS http://127.0.0.1:8765/healthz/ && curl -fsS http://127.0.0.1:8765/ | grep -q "StitchFlow"; then
               kill "$backend_pid"
               wait "$backend_pid" || true
               exit 0
@@ -267,7 +267,7 @@ jobs:
           ./dist-backend/stitchflow-backend/stitchflow-backend.exe --port 8765 > "$RUNNER_TEMP/stitchflow-backend.log" 2>&1 &
           backend_pid=$!
           for i in {1..60}; do
-            if curl -fsS http://127.0.0.1:8765/healthz/; then
+            if curl -fsS http://127.0.0.1:8765/healthz/ && curl -fsS http://127.0.0.1:8765/ | grep -q "StitchFlow"; then
               kill "$backend_pid"
               wait "$backend_pid" || true
               exit 0

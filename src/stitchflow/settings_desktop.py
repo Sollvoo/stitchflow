@@ -26,7 +26,13 @@ _VENDOR = Path(os.environ.get('STITCH_VENDOR_PATH', BASE_DIR.parent / 'vendor'))
 
 DEBUG = True
 SECRET_KEY = 'stitchflow-desktop-local-only-key-not-a-secret'
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '::1']
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '::1', 'stitchflow.localhost']
+SECURE_SSL_REDIRECT = False
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SECURE = False
+SECURE_HSTS_SECONDS = 0
+SECURE_PROXY_SSL_HEADER = None
+USE_X_FORWARDED_HOST = False
 
 # Pas d'auth email en mode desktop
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
