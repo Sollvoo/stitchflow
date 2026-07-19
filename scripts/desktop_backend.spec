@@ -4,6 +4,8 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 
 datas = []
+for package_dir in ("stitchflow", "conversions", "core", "users"):
+    datas += [(f"../src/{package_dir}", f"src/{package_dir}")]
 for package in ("conversions", "core", "users"):
     datas += collect_data_files(package, includes=["templates/**/*", "static/**/*", "migrations/*.py"])
 datas += [("../src/frontend/static/dist", "frontend/static/dist")]
