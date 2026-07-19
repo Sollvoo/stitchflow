@@ -200,11 +200,11 @@ jobs:
             echo "::notice::Unsigned macOS releases are acceptable for free beta distribution, but users must bypass Gatekeeper manually."
           fi
 
-      - name: Build macOS Intel DMG and ZIP
+      - name: Build macOS Intel ZIP
         env:
           GH_TOKEN: ${{ github.token }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
-        run: npm run build:mac-intel
+        run: npm run build:mac-intel-zip
 
   # ─── Windows x64 ────────────────────────────────────────────────────────────
   build-win:
