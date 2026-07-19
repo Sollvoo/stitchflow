@@ -11,6 +11,8 @@ import os
 import sys
 from pathlib import Path
 
+os.environ.setdefault('SECRET_KEY', 'stitchflow-desktop-local-only-key-not-a-secret')
+
 from .settings import *  # noqa: F401,F403
 
 # ── Chemins desktop ───────────────────────────────────────────────────────────

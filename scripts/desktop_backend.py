@@ -26,6 +26,7 @@ def _bootstrap_paths() -> None:
 def _configure_env() -> None:
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "stitchflow.settings_desktop")
     os.environ.setdefault("PYTHONUNBUFFERED", "1")
+    os.environ.setdefault("SECRET_KEY", "stitchflow-desktop-local-only-key-not-a-secret")
 
 
 def _execute_django(argv: list[str]) -> None:
