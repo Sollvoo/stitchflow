@@ -4,6 +4,18 @@
   <img src="{{ preview_data_uri }}" class="w-full max-h-48 object-contain p-2" alt="Aperçu PDF">
 </div>
 {% endif %}
+{% if warnings %}
+<div role="alert" class="alert alert-warning py-2 px-3 text-xs gap-2 mt-2">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+  </svg>
+  <span>
+    {% for warning in warnings %}
+      {{ warning }}{% if not forloop.last %}<br>{% endif %}
+    {% endfor %}
+  </span>
+</div>
+{% endif %}
 <div id="pdf-suggestions"
      {% if suggested_width %}x-init="$dispatch('pdf-analyzed', { width: {{ suggested_width }} })"{% endif %}
      class="alert {% if is_vector %}alert-success{% else %}alert-info{% endif %} py-3 px-4 text-sm gap-2 mt-2">
@@ -25,6 +37,10 @@
     {% else %}
     <span class="font-medium">PDF scanné (image)</span> —
     Pipeline rasterisation 300 dpi → vectorisation → PES. Ajustez les paramètres ci-dessous.
+    {% if width_mm and height_mm %}
+    Taille de page estimée : <strong>{{ width_mm }} × {{ height_mm }} mm</strong>.
+    {% endif %}
+    {% if suggested_width %}Largeur suggérée <strong>{{ suggested_width }} mm</strong> pré-remplie ci-dessous.{% endif %}
     {% endif %}
   </div>
 </div>

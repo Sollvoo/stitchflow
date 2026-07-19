@@ -86,8 +86,22 @@ def _check_poppler() -> dict:
     return {
         "found": False,
         "message": "Poppler (pdftocairo) introuvable. PDF non supporté sans Poppler.",
-        "optional": True,
+        "required_for": ["pdf_preview", "pdf_conversion"],
+        "optional": False,
     }
+
+
+def _check_pdf2image() -> dict:
+    try:
+        import pdf2image  # noqa: F401
+    except Exception as exc:
+        return {
+            "found": False,
+            "message": f"pdf2image introuvable. PDF non supporté sans ce module Python : {exc}",
+            "required_for": ["pdf_preview", "pdf_conversion"],
+            "optional": False,
+        }
+    return {"found": True}
 
 
 def _check_python() -> dict:
@@ -105,6 +119,7 @@ def _print_deps() -> int:
         "python": _check_python(),
         "inkstitch": _check_inkstitch(),
         "poppler": _check_poppler(),
+        "pdf2image": _check_pdf2image(),
     }
     print(json.dumps(results, indent=2))
     return 1 if not results["inkstitch"]["found"] else 0

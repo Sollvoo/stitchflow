@@ -1,5 +1,6 @@
 import csv
 import json
+import logging
 import os
 import re
 import shutil
@@ -25,13 +26,51 @@ from .models import ConversionJob
 from .forms import SVGUploadForm, PNGUploadForm, PDFUploadForm
 from .tasks import process_conversion_job, finalize_svg_to_pes
 
+logger = logging.getLogger(__name__)
+
 
 def _dispatch(task_fn, job_id: str) -> None:
-    """Lance la tâche via Celery (web) ou threading (desktop)."""
+    """Lance la tâche via Celery (web) ou thread local contrôlé (desktop)."""
     if getattr(settings, 'USE_CELERY', False):
         task_fn.delay(job_id)
-    else:
-        threading.Thread(target=task_fn, args=[job_id], daemon=True).start()
+        return
+
+    def _run() -> None:
+        logger.info('[desktop-dispatch] démarrage %s job=%s', task_fn.__name__, job_id)
+        try:
+            task_fn(job_id)
+        except Exception:
+            logger.exception('[desktop-dispatch] exception non capturée %s job=%s', task_fn.__name__, job_id)
+            try:
+                job = ConversionJob.objects.get(id=job_id)
+                if not job.is_terminal:
+                    job.status = ConversionJob.Status.FAILED
+                    job.error_message = (
+                        "La conversion a échoué avant de pouvoir démarrer. "
+                        "Consultez les logs desktop pour le détail technique."
+                    )
+                    job.progress_step = 'Échec au démarrage'
+                    job.save(update_fields=['status', 'error_message', 'progress_step', 'updated_at'])
+            except Exception:
+                logger.exception('[desktop-dispatch] impossible de marquer job=%s en échec', job_id)
+
+    try:
+        thread = threading.Thread(
+            target=_run,
+            name=f'stitchflow-job-{job_id}',
+            daemon=True,
+        )
+        thread.start()
+    except Exception as exc:
+        logger.exception('[desktop-dispatch] impossible de lancer le thread job=%s', job_id)
+        try:
+            job = ConversionJob.objects.get(id=job_id)
+            job.status = ConversionJob.Status.FAILED
+            job.error_message = f"Impossible de démarrer la conversion locale : {exc}"
+            job.progress_step = 'Échec au démarrage'
+            job.save(update_fields=['status', 'error_message', 'progress_step', 'updated_at'])
+        except Exception:
+            logger.exception('[desktop-dispatch] impossible de sauvegarder l’échec job=%s', job_id)
 
 
 class JobOwnerMixin:
@@ -367,10 +406,35 @@ class JobStatusView(JobOwnerMixin, View):
 
     def get(self, request, pk):
         job = get_object_or_404(ConversionJob, pk=pk)
+        self._fail_stale_desktop_pending_job(job)
         return HttpResponse(
             self._render_status(request, job),
             content_type='text/html',
         )
+
+    @staticmethod
+    def _fail_stale_desktop_pending_job(job: ConversionJob) -> None:
+        if not getattr(settings, 'DESKTOP_MODE', False):
+            return
+        if job.status != ConversionJob.Status.PENDING:
+            return
+
+        from datetime import timedelta
+        from django.utils import timezone
+
+        max_age = timedelta(seconds=getattr(settings, 'DESKTOP_PENDING_TIMEOUT_SECONDS', 90))
+        if timezone.now() - job.updated_at < max_age:
+            return
+
+        logger.error('[desktop-watchdog] job %s resté pending plus de %ss', job.id, max_age.total_seconds())
+        job.status = ConversionJob.Status.FAILED
+        job.error_message = (
+            "La conversion locale n'a pas démarré dans le délai attendu. "
+            "Redémarrez StitchFlow puis réessayez. Si le problème persiste, consultez "
+            "~/Library/Application Support/StitchFlow/logs/main.log et stitchflow.log."
+        )
+        job.progress_step = 'Démarrage expiré'
+        job.save(update_fields=['status', 'error_message', 'progress_step', 'updated_at'])
 
     def _render_status(self, request, job):
         from django.template.loader import render_to_string
@@ -672,6 +736,7 @@ class AnalyzePDFView(View):
         import base64
         import tempfile
         from pathlib import Path as _Path
+        from PIL import Image
         from .services.pdf_processing import (
             extract_vector_svg_from_pdf,
             is_vector_pdf_svg,
@@ -684,6 +749,11 @@ class AnalyzePDFView(View):
         if not file:
             return HttpResponse('', content_type='text/html')
 
+        is_vector = False
+        width_mm = height_mm = suggested_width = None
+        preview_data_uri = None
+        warnings: list[str] = []
+        tmp_pdf = None
         try:
             with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as f:
                 for chunk in file.chunks():
@@ -691,9 +761,17 @@ class AnalyzePDFView(View):
                 tmp_pdf = _Path(f.name)
 
             tmp_svg = tmp_pdf.with_suffix('.svg')
-            is_vector = False
-            width_mm = height_mm = suggested_width = None
-            preview_data_uri = None
+
+            def _suggest_pdf_width(width: float | None) -> int:
+                if not width:
+                    return 120
+                if width < 30:
+                    return 50
+                if width > 360:
+                    return 200
+                if width > 200:
+                    return 120
+                return max(20, min(360, int(width)))
 
             try:
                 extract_vector_svg_from_pdf(tmp_pdf, tmp_svg)
@@ -703,33 +781,42 @@ class AnalyzePDFView(View):
                     dims = normalize_svg_dimensions_to_mm(tmp_svg)
                     if dims:
                         width_mm, height_mm = dims
-                        if width_mm < 20:
-                            suggested_width = 40
-                        elif width_mm > 360:
-                            suggested_width = 200
-                        else:
-                            suggested_width = int(width_mm)
+                        suggested_width = _suggest_pdf_width(width_mm)
 
-            except (PDFExtractionError, Exception):
-                pass
+            except PDFExtractionError as exc:
+                warnings.append(str(exc))
+            except Exception as exc:
+                logger.exception('[pdf-analyze] extraction vectorielle échouée')
+                warnings.append(f"Analyse vectorielle PDF indisponible : {exc}")
             finally:
                 if tmp_svg.exists():
                     tmp_svg.unlink(missing_ok=True)
 
             try:
                 preview_png = convert_pdf_to_png(tmp_pdf, dpi=100)
+                if suggested_width is None:
+                    with Image.open(preview_png) as img:
+                        width_mm = round(img.width / 100 * 25.4, 1)
+                        height_mm = round(img.height / 100 * 25.4, 1)
+                        suggested_width = _suggest_pdf_width(width_mm)
                 preview_data_uri = (
                     'data:image/png;base64,'
                     + base64.b64encode(preview_png.read_bytes()).decode('ascii')
                 )
                 preview_png.unlink(missing_ok=True)
-            except (PNGValidationError, Exception):
-                pass
+            except PNGValidationError as exc:
+                warnings.append(str(exc))
+            except Exception as exc:
+                logger.exception('[pdf-analyze] preview PDF échouée')
+                warnings.append(f"Aperçu PDF indisponible : {exc}")
             finally:
                 tmp_pdf.unlink(missing_ok=True)
 
-        except Exception:
-            return HttpResponse('', content_type='text/html')
+        except Exception as exc:
+            logger.exception('[pdf-analyze] analyse PDF impossible')
+            warnings.append(f"Analyse PDF impossible : {exc}")
+            if tmp_pdf:
+                tmp_pdf.unlink(missing_ok=True)
 
         return render(request, 'conversions/partials/pdf_suggestions.html', {
             'is_vector': is_vector,
@@ -737,6 +824,7 @@ class AnalyzePDFView(View):
             'height_mm': height_mm,
             'suggested_width': suggested_width,
             'preview_data_uri': preview_data_uri,
+            'warnings': warnings,
         })
 
 

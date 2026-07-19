@@ -3,6 +3,10 @@
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 
+def _runtime_module(name):
+    return ".tests" not in name and not name.endswith(".tests")
+
+
 datas = []
 for package_dir in ("stitchflow", "conversions", "core", "users"):
     datas += [(f"../src/{package_dir}", f"src/{package_dir}")]
@@ -14,6 +18,15 @@ hiddenimports = []
 hiddenimports += [
     "decouple",
     "dj_database_url",
+    "pdf2image",
+    "PIL",
+    "PIL.Image",
+    "PIL.ImageEnhance",
+    "PIL.ImageFilter",
+    "PIL.ImageOps",
+    "numpy",
+    "pyembroidery",
+    "vtracer",
 ]
 for package in (
     "conversions",
@@ -25,7 +38,7 @@ for package in (
     "django_ratelimit",
     "whitenoise",
 ):
-    hiddenimports += collect_submodules(package)
+    hiddenimports += collect_submodules(package, filter=_runtime_module)
 
 
 a = Analysis(

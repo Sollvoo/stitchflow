@@ -23,6 +23,26 @@ def _set_progress(job, pct: int, step: str) -> None:
     job.save(update_fields=['progress_pct', 'progress_step', 'updated_at'])
     logger.debug('[progress] job %s: %d%% (%s)', job.id, pct, step)
 
+
+def _desktop_auto_finalize_vectorized(job, source_svg_path: Path, start_time: float) -> bool:
+    """En desktop, enchaîne directement SVG vectorisé -> fichier broderie."""
+    if not getattr(settings, 'DESKTOP_MODE', False):
+        return False
+
+    logger.info(
+        '[desktop] auto-finalisation job %s depuis SVG vectorisé %s',
+        job.id,
+        source_svg_path,
+    )
+    job.status = job.__class__.Status.PROCESSING
+    job.progress_pct = 5
+    job.progress_step = 'Finalisation automatique de la broderie'
+    job.save(update_fields=[
+        'status', 'vectorized_svg_file', 'progress_pct', 'progress_step', 'updated_at',
+    ])
+    _run_svg_to_pes_pipeline(job, source_svg_path, start_time=start_time)
+    return True
+
 _DEFAULT_MACHINE = {
     'model': 'PR1050X',
     'needles': 10,
@@ -181,6 +201,7 @@ def _run_svg_to_pes_pipeline(job, source_svg_path: Path, start_time: float | Non
         # Export multi-format selon le profil machine — le PES reste la source
         # de vérité pour la preview et les métadonnées (DST ne stocke pas les couleurs)
         output_path = pes_path
+        export_warning = ''
         if machine['format'] != 'PES':
             try:
                 output_path = convert_pes_to_format(pes_path, machine['format'])
@@ -191,6 +212,10 @@ def _run_svg_to_pes_pipeline(job, source_svg_path: Path, start_time: float | Non
                     machine['format'], job.id, export_exc,
                 )
                 output_path = pes_path
+                export_warning = (
+                    f"L'export au format {machine['format']} a échoué — "
+                    "le fichier PES est fourni à la place."
+                )
 
         job.output_file.name = str(output_path.relative_to(settings.MEDIA_ROOT))
         job.status = job.__class__.Status.COMPLETED
@@ -215,6 +240,12 @@ def _run_svg_to_pes_pipeline(job, source_svg_path: Path, start_time: float | Non
             )
         except Exception as meta_exc:
             logger.warning("Metadata échouée pour job %s : %s", job.id, meta_exc)
+
+        if export_warning:
+            job.conversion_metadata = {
+                **(job.conversion_metadata or {}),
+                'export_warning': export_warning,
+            }
 
         job.save(update_fields=[
             'status', 'output_file', 'preview_file', 'conversion_metadata',
@@ -260,6 +291,12 @@ def process_conversion_job(job_id: str) -> None:
 
     try:
         input_path = Path(settings.MEDIA_ROOT) / job.original_file.name
+        logger.info(
+            'Job %s chemins: input=%s media_root=%s',
+            job_id,
+            input_path,
+            settings.MEDIA_ROOT,
+        )
         vectorized_dir = Path(settings.MEDIA_ROOT) / 'conversions' / 'vectorized'
         vectorized_dir.mkdir(parents=True, exist_ok=True)
 
@@ -286,6 +323,9 @@ def process_conversion_job(job_id: str) -> None:
                 dest_svg = vectorized_dir / f'{job.id}.svg'
                 shutil.copy2(tmp_svg_path, dest_svg)
                 job.vectorized_svg_file.name = str(dest_svg.relative_to(settings.MEDIA_ROOT))
+
+                if _desktop_auto_finalize_vectorized(job, dest_svg, start_time):
+                    return
 
                 # Pause : l'utilisateur valide le SVG avant la conversion PES,
                 # comme pour PNG/JPEG/WebP (éditeur couleurs/densité)
@@ -342,7 +382,10 @@ def process_conversion_job(job_id: str) -> None:
                 _set_progress(job, 65, 'Suppression du fond')
 
             _t0 = time.monotonic()
-            tmp_svg_path = vectorize_to_svg(processed_path, n_colors=job.n_colors or 6)
+            try:
+                tmp_svg_path = vectorize_to_svg(processed_path, n_colors=job.n_colors or 6)
+            except Exception as exc:
+                raise PNGValidationError(str(exc)) from exc
             logger.debug('[timing] job %s : vectorize_to_svg %.2fs', job_id, time.monotonic() - _t0)
             logger.info("Vectorisation SVG terminée pour job %s", job_id)
             _set_progress(job, 95, 'Vectorisation du dessin')
@@ -350,6 +393,9 @@ def process_conversion_job(job_id: str) -> None:
             dest_svg = vectorized_dir / f'{job.id}.svg'
             shutil.copy2(tmp_svg_path, dest_svg)
             job.vectorized_svg_file.name = str(dest_svg.relative_to(settings.MEDIA_ROOT))
+
+            if _desktop_auto_finalize_vectorized(job, dest_svg, start_time):
+                return
 
             # Pause : l'utilisateur valide le SVG avant la conversion PES
             job.status = ConversionJob.Status.AWAITING_SVG_VALIDATION
@@ -397,10 +443,13 @@ def process_conversion_job(job_id: str) -> None:
         job.error_message = error_msg
         job.save(update_fields=['status', 'error_message', 'updated_at'])
 
-    except Exception:
+    except Exception as exc:
         logger.exception("Erreur inattendue job %s", job_id)
         job.status = ConversionJob.Status.FAILED
-        job.error_message = "Une erreur interne est survenue. Veuillez réessayer."
+        if getattr(settings, 'DESKTOP_MODE', False):
+            job.error_message = f"Une erreur interne est survenue : {exc}"
+        else:
+            job.error_message = "Une erreur interne est survenue. Veuillez réessayer."
         job.save(update_fields=['status', 'error_message', 'updated_at'])
 
     finally:
@@ -437,8 +486,10 @@ def finalize_svg_to_pes(job_id: str) -> None:
     start_time = time.monotonic()
     job.status = ConversionJob.Status.PROCESSING
     job.error_message = ''
-    job.progress_pct = 0
-    job.progress_step = ''
+    # Ne pas repartir à 0% sans libellé : la barre repartait brutalement en arrière
+    # après la validation éditeur (le pipeline raster affichait déjà ~95-100%)
+    job.progress_pct = 5
+    job.progress_step = 'Finalisation de la broderie'
     job.save(update_fields=['status', 'error_message', 'progress_pct', 'progress_step', 'updated_at'])
     logger.info("Finalisation PES job %s depuis %s", job_id, job.vectorized_svg_file.name)
 

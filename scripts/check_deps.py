@@ -14,8 +14,14 @@ def check_inkstitch() -> dict:
     """Vérifie qu'Ink/Stitch est installé et fonctionnel."""
     candidates = []
     if sys.platform == 'darwin':
+        _lib_inkscape = Path.home() / 'Library/Application Support/org.inkscape.Inkscape/config/inkscape/extensions/inkstitch'
         candidates = [
+            # Inkscape .app sandboxé (installation standard macOS)
+            _lib_inkscape / 'inkstitch.app/Contents/MacOS/inkstitch',
+            _lib_inkscape / 'inkstitch',
+            # Inkscape legacy ~/.config
             Path.home() / '.config/inkscape/extensions/inkstitch/inkstitch',
+            # Inkscape dans /Applications
             Path('/Applications/Inkscape.app/Contents/Resources/share/inkscape/extensions/inkstitch/inkstitch'),
         ]
     elif sys.platform == 'win32':
@@ -59,8 +65,23 @@ def check_poppler() -> dict:
     return {
         'found': False,
         'message': 'Poppler (pdftocairo) introuvable. PDF non supporté sans Poppler.',
-        'optional': True,
+        'required_for': ['pdf_preview', 'pdf_conversion'],
+        'optional': False,
     }
+
+
+def check_pdf2image() -> dict:
+    """Vérifie que pdf2image est disponible pour preview/conversion PDF."""
+    try:
+        import pdf2image  # noqa: F401
+    except Exception as exc:
+        return {
+            'found': False,
+            'message': f'pdf2image introuvable. PDF non supporté sans ce module Python : {exc}',
+            'required_for': ['pdf_preview', 'pdf_conversion'],
+            'optional': False,
+        }
+    return {'found': True}
 
 
 def check_python() -> dict:
@@ -79,6 +100,7 @@ if __name__ == '__main__':
         'python': check_python(),
         'inkstitch': check_inkstitch(),
         'poppler': check_poppler(),
+        'pdf2image': check_pdf2image(),
     }
     print(json.dumps(results, indent=2))
     # Exit code 1 si une dépendance critique manque

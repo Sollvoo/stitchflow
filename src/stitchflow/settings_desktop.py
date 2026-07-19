@@ -57,6 +57,8 @@ MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 INSTALLED_APPS = [app for app in INSTALLED_APPS if 'celery' not in app.lower()]  # noqa: F405
 
 USE_CELERY = False
+DESKTOP_MODE = True
+DESKTOP_PENDING_TIMEOUT_SECONDS = int(os.environ.get('DESKTOP_PENDING_TIMEOUT_SECONDS', '90'))
 
 # Cache en mémoire locale — Redis non disponible en mode desktop
 CACHES = {
@@ -86,8 +88,14 @@ def _find_inkstitch() -> str:
 
     candidates = []
     if sys.platform == 'darwin':
+        _lib_inkscape = Path.home() / 'Library/Application Support/org.inkscape.Inkscape/config/inkscape/extensions/inkstitch'
         candidates = [
+            # Inkscape .app sandboxé (installation standard macOS)
+            _lib_inkscape / 'inkstitch.app/Contents/MacOS/inkstitch',
+            _lib_inkscape / 'inkstitch',
+            # Inkscape legacy ~/.config
             Path.home() / '.config/inkscape/extensions/inkstitch/inkstitch',
+            # Inkscape dans /Applications
             Path('/Applications/Inkscape.app/Contents/Resources/share/inkscape/extensions/inkstitch/inkstitch'),
         ]
     elif sys.platform == 'win32':

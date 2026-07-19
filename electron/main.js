@@ -515,6 +515,29 @@ function showInkstitchMissingDialog() {
   shell.openExternal('https://inkstitch.org/docs/install/')
 }
 
+function showPdfDepsMissingDialog(deps) {
+  const missing = []
+  if (deps && deps.poppler && !deps.poppler.found) missing.push(deps.poppler.message || 'Poppler introuvable')
+  if (deps && deps.pdf2image && !deps.pdf2image.found) missing.push(deps.pdf2image.message || 'pdf2image introuvable')
+  if (!missing.length) return
+
+  dialog.showMessageBoxSync({
+    type: 'warning',
+    title: 'PDF partiellement indisponible',
+    message: 'Les conversions PDF nécessitent Poppler',
+    detail: [
+      ...missing,
+      '',
+      'SVG, PNG, JPEG et WebP restent utilisables.',
+      'Pour activer les PDF, installez Poppler ou utilisez une version qui embarque les binaires PDF.',
+      '',
+      `Log de démarrage : ${logFilePath || ensureLogger()}`,
+    ].join('\n'),
+    buttons: ['OK'],
+    defaultId: 0,
+  })
+}
+
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 function setupAutoUpdater() {
@@ -578,6 +601,9 @@ app.whenReady().then(async () => {
   const deps = checkDependencies()
   if (deps && !deps.inkstitch?.found) {
     showInkstitchMissingDialog()
+  }
+  if (deps && (deps.poppler?.found === false || deps.pdf2image?.found === false)) {
+    showPdfDepsMissingDialog(deps)
   }
 
   runMigrations()
