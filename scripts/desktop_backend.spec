@@ -8,9 +8,13 @@ for package_dir in ("stitchflow", "conversions", "core", "users"):
     datas += [(f"../src/{package_dir}", f"src/{package_dir}")]
 for package in ("conversions", "core", "users"):
     datas += collect_data_files(package, includes=["templates/**/*", "static/**/*", "migrations/*.py"])
-datas += [("../src/frontend/static/dist", "frontend/static/dist")]
+datas += [("../src/frontend/static/dist", "src/frontend/static/dist")]
 
 hiddenimports = []
+hiddenimports += [
+    "decouple",
+    "dj_database_url",
+]
 for package in (
     "conversions",
     "core",
