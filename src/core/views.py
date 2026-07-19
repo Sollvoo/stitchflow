@@ -1,4 +1,6 @@
 from django import forms
+from django.db import connections
+from django.http import JsonResponse
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
 from django.views import View
@@ -14,6 +16,18 @@ def ratelimited_view(request, exception=None):
 
 class HomeView(TemplateView):
     template_name = 'home.html'
+
+
+def healthz(request: HttpRequest) -> JsonResponse:
+    """Healthcheck léger pour le proxy et les déploiements Coolify."""
+    try:
+        with connections["default"].cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+    except Exception as exc:  # pragma: no cover - dépend de l'environnement runtime
+        return JsonResponse({"status": "error", "database": str(exc)}, status=503)
+
+    return JsonResponse({"status": "ok"})
 
 
 class WaitlistForm(forms.Form):
