@@ -53,6 +53,7 @@ vendor/poppler-*/
 
 # Electron builder output
 out/
+dist-backend/
 
 # Résultats de tests manuels (générés, pas de source)
 tests/results/

@@ -1,12 +1,13 @@
 {
   "name": "stitchflow-desktop",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "description": "StitchFlow Desktop - Convert SVG/PNG/PDF to embroidery PES files",
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
+    "build:backend": ".venv/bin/pyinstaller --noconfirm --clean --distpath dist-backend --workpath build/pyinstaller scripts/desktop_backend.spec",
     "build:mac": "electron-builder --mac",
     "build:win": "electron-builder --win",
     "build:mac-intel": "electron-builder --mac --x64",
@@ -48,15 +49,10 @@
         "filter": ["**/*"]
       },
       {
-        "from": ".venv/",
-        "to": ".venv/",
+        "from": "dist-backend/stitchflow-backend/",
+        "to": "backend/",
         "filter": [
-          "**/*",
-          "!**/__pycache__/**/*",
-          "!**/*.pyc",
-          "!**/*.pyo",
-          "!lib/python*/site-packages/numba/**/*",
-          "!lib/python*/site-packages/llvmlite/**/*"
+          "**/*"
         ]
       }
     ],
@@ -64,11 +60,12 @@
       "category": "public.app-category.utilities",
       "icon": "assets/icon.icns",
       "hardenedRuntime": true,
-      "notarize": true,
+      "notarize": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.inherit.plist",
       "artifactName": "${productName}-${arch}.${ext}",
       "target": [
+        "dmg",
         "zip"
       ]
     },

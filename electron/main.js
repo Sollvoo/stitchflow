@@ -6,18 +6,60 @@ const fs = require('fs')
 const { autoUpdater } = require('electron-updater')
 
 const DJANGO_DEFAULT_PORT = 8765
-const DJANGO_STARTUP_RETRIES = 60
+const DJANGO_STARTUP_RETRIES = 120
 const DJANGO_RETRY_INTERVAL_MS = 500
+
+app.setName('StitchFlow')
 
 let djangoProcess = null
 let mainWindow = null
 let djangoPort = DJANGO_DEFAULT_PORT
+let logFilePath = null
+let lastBackendError = 'Le serveur Django n\'a pas répondu dans les délais attendus.'
+
+// ── Logging ──────────────────────────────────────────────────────────────────
+
+function ensureLogger() {
+  if (logFilePath) return logFilePath
+  const logDir = path.join(app.getPath('userData'), 'logs')
+  fs.mkdirSync(logDir, { recursive: true })
+  logFilePath = path.join(logDir, 'main.log')
+  return logFilePath
+}
+
+function log(message, meta = null) {
+  const line = [
+    new Date().toISOString(),
+    message,
+    meta ? JSON.stringify(meta, null, 2) : '',
+  ].filter(Boolean).join(' ')
+
+  try {
+    fs.appendFileSync(ensureLogger(), `${line}\n`)
+  } catch {}
+
+  if (!app.isPackaged || process.env.DEBUG_DJANGO) {
+    console.log(line)
+  }
+}
+
+function logError(message, err = null) {
+  const meta = err ? {
+    message: err.message,
+    code: err.code,
+    signal: err.signal,
+    stdout: err.stdout ? String(err.stdout).slice(-4000) : undefined,
+    stderr: err.stderr ? String(err.stderr).slice(-4000) : undefined,
+  } : null
+  lastBackendError = err?.message || message
+  log(message, meta)
+}
 
 // ── Utilitaires ──────────────────────────────────────────────────────────────
 
 function getResourcesPath() {
   return app.isPackaged
-    ? path.join(process.resourcesPath)
+    ? process.resourcesPath
     : path.join(__dirname, '..')
 }
 
@@ -27,36 +69,76 @@ function getAppRootPath() {
     : path.join(__dirname, '..')
 }
 
-function getPythonExecutable() {
-  const resourcesPath = getResourcesPath()
-  const appRootPath = getAppRootPath()
-  const venvPython = path.join(resourcesPath, '.venv', 'bin', 'python3')
-  const venvPythonWin = path.join(resourcesPath, '.venv', 'Scripts', 'python.exe')
-  const devVenvPython = path.join(appRootPath, '.venv', 'bin', 'python3')
-  const devVenvPythonWin = path.join(appRootPath, '.venv', 'Scripts', 'python.exe')
-  const macCandidates = [
-    '/opt/homebrew/bin/python3',
-    '/usr/local/bin/python3',
-    '/usr/bin/python3',
-  ]
-
-  if (process.platform === 'win32' && fs.existsSync(venvPythonWin)) return venvPythonWin
-  if (process.platform === 'win32' && fs.existsSync(devVenvPythonWin)) return devVenvPythonWin
-  if (fs.existsSync(venvPython)) return venvPython
-  if (fs.existsSync(devVenvPython)) return devVenvPython
-  if (process.platform === 'darwin') {
-    const found = macCandidates.find((candidate) => fs.existsSync(candidate))
-    if (found) return found
-  }
-  return 'python3'
+function getSrcPath() {
+  return path.join(getAppRootPath(), 'src')
 }
 
 function getVendorPath() {
-  const resourcesPath = getResourcesPath()
-  const appRootPath = getAppRootPath()
   return app.isPackaged
     ? path.join(process.resourcesPath, 'vendor')
-    : path.join(appRootPath, 'vendor')
+    : path.join(getAppRootPath(), 'vendor')
+}
+
+function getPythonExecutable() {
+  const appRootPath = getAppRootPath()
+  const devVenvPython = path.join(appRootPath, '.venv', 'bin', 'python3')
+  const devVenvPythonWin = path.join(appRootPath, '.venv', 'Scripts', 'python.exe')
+
+  if (process.platform === 'win32' && fs.existsSync(devVenvPythonWin)) return devVenvPythonWin
+  if (fs.existsSync(devVenvPython)) return devVenvPython
+  return process.platform === 'win32' ? 'python' : 'python3'
+}
+
+function getBackendExecutable() {
+  if (!app.isPackaged) return null
+  const exeName = process.platform === 'win32' ? 'stitchflow-backend.exe' : 'stitchflow-backend'
+  const candidate = path.join(process.resourcesPath, 'backend', exeName)
+  return fs.existsSync(candidate) ? candidate : null
+}
+
+function getBackendCommand(args) {
+  const backend = getBackendExecutable()
+  if (backend) {
+    return {
+      command: backend,
+      args,
+      cwd: path.dirname(backend),
+      mode: 'pyinstaller',
+    }
+  }
+
+  const srcPath = getSrcPath()
+  return {
+    command: getPythonExecutable(),
+    args: [path.join(srcPath, 'manage.py'), ...args],
+    cwd: srcPath,
+    mode: 'python-dev',
+  }
+}
+
+function getBackendEnv(port = null) {
+  const srcPath = getSrcPath()
+  const env = {
+    ...process.env,
+    DJANGO_SETTINGS_MODULE: 'stitchflow.settings_desktop',
+    PYTHONPATH: srcPath,
+    STITCH_USERDATA: app.getPath('userData'),
+    STITCH_VENDOR_PATH: getVendorPath(),
+    PYTHONUNBUFFERED: '1',
+  }
+  if (port) env.STITCH_PORT = String(port)
+  return env
+}
+
+function usefulEnv(env) {
+  return {
+    DJANGO_SETTINGS_MODULE: env.DJANGO_SETTINGS_MODULE,
+    PYTHONPATH: env.PYTHONPATH,
+    STITCH_USERDATA: env.STITCH_USERDATA,
+    STITCH_VENDOR_PATH: env.STITCH_VENDOR_PATH,
+    STITCH_PORT: env.STITCH_PORT,
+    PATH: env.PATH,
+  }
 }
 
 async function findFreePort(startPort) {
@@ -80,51 +162,67 @@ async function waitForDjango(port, retries = DJANGO_STARTUP_RETRIES) {
         socket.on('error', reject)
         socket.on('timeout', reject)
       })
+      log('Django port responded', { port, attempt: i + 1 })
       return true
     } catch {
       await new Promise(r => setTimeout(r, DJANGO_RETRY_INTERVAL_MS))
     }
   }
+  lastBackendError = `Timeout: Django n'a pas répondu sur 127.0.0.1:${port}.`
+  log('Django startup timeout', { port, retries, logFilePath })
   return false
 }
 
 // ── Démarrage Django ──────────────────────────────────────────────────────────
 
 function startDjango(port) {
-  const appRootPath = getAppRootPath()
-  const srcPath = path.join(appRootPath, 'src')
-  const userDataPath = app.getPath('userData')
-  const python = getPythonExecutable()
-  const vendorPath = getVendorPath()
+  const env = getBackendEnv(port)
+  const backend = getBackendExecutable()
+  const command = backend
+    ? {
+        command: backend,
+        args: ['--port', String(port)],
+        cwd: path.dirname(backend),
+        mode: 'pyinstaller',
+      }
+    : getBackendCommand(['runserver', `127.0.0.1:${port}`, '--noreload'])
 
-  const env = {
-    ...process.env,
-    DJANGO_SETTINGS_MODULE: 'stitchflow.settings_desktop',
-    PYTHONPATH: srcPath,
-    STITCH_USERDATA: userDataPath,
-    STITCH_VENDOR_PATH: vendorPath,
-    STITCH_PORT: String(port),
-    PYTHONUNBUFFERED: '1',
-  }
+  log('Starting Django backend', {
+    mode: command.mode,
+    command: command.command,
+    args: command.args,
+    cwd: command.cwd,
+    appRootPath: getAppRootPath(),
+    resourcesPath: getResourcesPath(),
+    userDataPath: app.getPath('userData'),
+    logFilePath,
+    env: usefulEnv(env),
+  })
 
-  const managePy = path.join(srcPath, 'manage.py')
-  djangoProcess = spawn(python, [managePy, 'runserver', `127.0.0.1:${port}`, '--noreload'], {
-    cwd: srcPath,
+  djangoProcess = spawn(command.command, command.args, {
+    cwd: command.cwd,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
   })
 
   djangoProcess.stdout.on('data', (d) => {
-    if (process.env.DEBUG_DJANGO) process.stdout.write('[Django] ' + d)
+    const text = String(d).trimEnd()
+    if (text) log('[Django stdout]', { text })
   })
   djangoProcess.stderr.on('data', (d) => {
-    if (process.env.DEBUG_DJANGO) process.stderr.write('[Django] ' + d)
+    const text = String(d).trimEnd()
+    if (text) {
+      lastBackendError = text.slice(-1000)
+      log('[Django stderr]', { text })
+    }
   })
-  djangoProcess.on('exit', (code) => {
-    if (code !== 0 && mainWindow) {
-      mainWindow.webContents.executeJavaScript(
-        `document.body.innerHTML = '<div style="font-family:sans-serif;padding:40px;color:#c00"><h2>StitchFlow a rencontré une erreur</h2><p>Le serveur backend a quitté avec le code ${code}.</p><p>Relancez l\'application.</p></div>'`
-      )
+  djangoProcess.on('error', (err) => {
+    logError('Django spawn failed', err)
+  })
+  djangoProcess.on('exit', (code, signal) => {
+    log('Django backend exited', { code, signal })
+    if (code !== 0) {
+      lastBackendError = `Le serveur backend a quitté avec le code ${code ?? 'inconnu'}${signal ? ` (${signal})` : ''}.`
     }
   })
 }
@@ -132,30 +230,35 @@ function startDjango(port) {
 // ── Migration Django au premier lancement ─────────────────────────────────────
 
 function runMigrations() {
-  const appRootPath = getAppRootPath()
-  const srcPath = path.join(appRootPath, 'src')
-  const userDataPath = app.getPath('userData')
-  const python = getPythonExecutable()
-  const vendorPath = getVendorPath()
-
-  const env = {
-    ...process.env,
-    DJANGO_SETTINGS_MODULE: 'stitchflow.settings_desktop',
-    PYTHONPATH: srcPath,
-    STITCH_USERDATA: userDataPath,
-    STITCH_VENDOR_PATH: vendorPath,
-  }
+  const env = getBackendEnv()
+  const backend = getBackendExecutable()
+  const command = backend
+    ? {
+        command: backend,
+        args: ['--migrate'],
+        cwd: path.dirname(backend),
+        mode: 'pyinstaller',
+      }
+    : getBackendCommand(['migrate', '--run-syncdb', '--noinput'])
 
   try {
-    const managePy = path.join(srcPath, 'manage.py')
-    execFileSync(python, [managePy, 'migrate', '--run-syncdb'], {
-      cwd: srcPath,
-      env,
-      stdio: 'ignore',
-      timeout: 30000,
+    log('Running migrations', {
+      mode: command.mode,
+      command: command.command,
+      args: command.args,
+      cwd: command.cwd,
+      env: usefulEnv(env),
     })
+    const output = execFileSync(command.command, command.args, {
+      cwd: command.cwd,
+      env,
+      encoding: 'utf8',
+      timeout: 60000,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    log('Migrations completed', { output: output.slice(-4000) })
   } catch (e) {
-    // Non-bloquant : on continue si les migrations échouent (DB déjà à jour)
+    logError('Migrations failed; continuing to backend startup', e)
   }
 }
 
@@ -179,12 +282,10 @@ function createWindow(port) {
     },
   })
 
-  // Splash screen pendant le chargement
   mainWindow.loadFile(path.join(__dirname, 'splash.html'))
 
   mainWindow.on('closed', () => { mainWindow = null })
 
-  // Ouvrir les liens externes dans le navigateur par défaut (https:// et http:// uniquement)
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     try {
       const parsed = new URL(url)
@@ -196,6 +297,14 @@ function createWindow(port) {
   })
 
   buildMenu(port)
+}
+
+function loadStartupError() {
+  if (!mainWindow) return
+  const errorUrl = new URL(`file://${path.join(__dirname, 'error.html')}`)
+  errorUrl.searchParams.set('log', logFilePath || '')
+  errorUrl.searchParams.set('reason', lastBackendError || '')
+  mainWindow.loadURL(errorUrl.toString())
 }
 
 function buildMenu(port) {
@@ -227,8 +336,12 @@ function buildMenu(port) {
           click: () => shell.openExternal('https://inkstitch.org/docs/install/'),
         },
         {
+          label: 'Ouvrir le dossier des logs',
+          click: () => shell.showItemInFolder(logFilePath || ensureLogger()),
+        },
+        {
           label: 'GitHub',
-          click: () => shell.openExternal('https://github.com/Sollvoo/stitchflow-desktop'),
+          click: () => shell.openExternal('https://github.com/Sollvoo/stitchflow'),
         },
       ],
     },
@@ -236,26 +349,51 @@ function buildMenu(port) {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
-// ── Lifecycle ─────────────────────────────────────────────────────────────────
-
 // ── Vérification des dépendances ─────────────────────────────────────────────
 
 function checkDependencies() {
-  const appRootPath = getAppRootPath()
-  const python = getPythonExecutable()
-  const checkScript = path.join(appRootPath, 'scripts', 'check_deps.py')
+  const env = getBackendEnv()
+  const backend = getBackendExecutable()
+  const command = backend
+    ? {
+        command: backend,
+        args: ['--check-deps'],
+        cwd: path.dirname(backend),
+        mode: 'pyinstaller',
+      }
+    : {
+        command: getPythonExecutable(),
+        args: [path.join(getAppRootPath(), 'scripts', 'check_deps.py')],
+        cwd: getAppRootPath(),
+        mode: 'python-dev',
+      }
 
   try {
-    const result = execFileSync(python, [checkScript], {
-      timeout: 10000,
-      encoding: 'utf8',
+    log('Checking desktop dependencies', {
+      mode: command.mode,
+      command: command.command,
+      args: command.args,
+      cwd: command.cwd,
     })
-    return JSON.parse(result)
+    const result = execFileSync(command.command, command.args, {
+      cwd: command.cwd,
+      env,
+      timeout: 15000,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    const deps = JSON.parse(result)
+    log('Dependency check completed', deps)
+    return deps
   } catch (e) {
-    // check_deps.py peut retourner exit code 1 même avec output JSON valide
     if (e.stdout) {
-      try { return JSON.parse(e.stdout) } catch {}
+      try {
+        const deps = JSON.parse(e.stdout)
+        log('Dependency check completed with warnings', deps)
+        return deps
+      } catch {}
     }
+    logError('Dependency check failed', e)
     return null
   }
 }
@@ -272,7 +410,7 @@ function showInkstitchMissingDialog() {
       '1. Téléchargez Inkscape depuis inkscape.org',
       '2. Installez l\'extension Ink/Stitch depuis inkstitch.org/docs/install/',
       '',
-      'Vous pourrez utiliser StitchFlow après l\'installation.',
+      `Log de démarrage : ${logFilePath || ensureLogger()}`,
     ].join('\n'),
     buttons: ['Ouvrir le guide d\'installation', 'Continuer sans Ink/Stitch'],
     defaultId: 0,
@@ -313,49 +451,53 @@ function setupAutoUpdater() {
   })
 
   autoUpdater.on('error', (err) => {
-    if (process.env.DEBUG_DJANGO) console.error('[updater]', err.message)
+    logError('Auto-updater failed', err)
   })
 
   autoUpdater.checkForUpdates()
 }
 
 app.whenReady().then(async () => {
-  // Icône dock en mode dev (packagé : l'icône vient du bundle .app)
+  ensureLogger()
+  log('StitchFlow Electron startup', {
+    isPackaged: app.isPackaged,
+    platform: process.platform,
+    arch: process.arch,
+    appPath: app.getAppPath(),
+    resourcesPath: getResourcesPath(),
+    userDataPath: app.getPath('userData'),
+    logFilePath,
+    backendExecutable: getBackendExecutable(),
+  })
+
   if (!app.isPackaged && process.platform === 'darwin') {
     const iconPath = path.join(__dirname, '..', 'assets', 'brand', 'icon-256.png')
     if (fs.existsSync(iconPath)) app.dock.setIcon(iconPath)
   }
 
   djangoPort = await findFreePort(DJANGO_DEFAULT_PORT)
+  log('Selected Django port', { djangoPort })
 
-  // Vérifier les dépendances
   const deps = checkDependencies()
   if (deps && !deps.inkstitch?.found) {
     showInkstitchMissingDialog()
   }
 
-  // Migrations au premier lancement
   runMigrations()
-
-  // Lancer Django
   startDjango(djangoPort)
-
-  // Créer la fenêtre avec splash screen
   createWindow(djangoPort)
 
-  // Attendre que Django réponde
   const ready = await waitForDjango(djangoPort)
   if (ready && mainWindow) {
     mainWindow.loadURL(`http://127.0.0.1:${djangoPort}/`)
   } else if (mainWindow) {
-    mainWindow.loadFile(path.join(__dirname, 'error.html'))
+    loadStartupError()
   }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow(djangoPort)
   })
 
-  // Vérifier les mises à jour uniquement dans l'app packagée
   if (app.isPackaged) setupAutoUpdater()
 })
 
@@ -364,6 +506,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  log('StitchFlow Electron quitting')
   if (djangoProcess) {
     djangoProcess.kill('SIGTERM')
     djangoProcess = null

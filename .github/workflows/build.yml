@@ -26,6 +26,7 @@ jobs:
           python3 -m venv --copies .venv
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install -r requirements.txt
+          .venv/bin/pip install pyinstaller
 
       - name: Download vtracer (ARM64 macOS)
         run: |
@@ -45,6 +46,37 @@ jobs:
           cd src/frontend
           npm install
           npm run build
+
+      - name: Build frozen Django backend
+        run: |
+          .venv/bin/pyinstaller --noconfirm --clean --distpath dist-backend --workpath build/pyinstaller scripts/desktop_backend.spec
+          test -x dist-backend/stitchflow-backend/stitchflow-backend
+
+      - name: Verify frozen Django backend
+        run: |
+          STITCH_USERDATA="$RUNNER_TEMP/stitchflow-userdata" \
+          STITCH_VENDOR_PATH="$PWD/vendor" \
+          dist-backend/stitchflow-backend/stitchflow-backend --migrate
+
+          STITCH_USERDATA="$RUNNER_TEMP/stitchflow-userdata" \
+          STITCH_VENDOR_PATH="$PWD/vendor" \
+          dist-backend/stitchflow-backend/stitchflow-backend --check
+
+          STITCH_USERDATA="$RUNNER_TEMP/stitchflow-userdata" \
+          STITCH_VENDOR_PATH="$PWD/vendor" \
+          dist-backend/stitchflow-backend/stitchflow-backend --port 8765 > "$RUNNER_TEMP/stitchflow-backend.log" 2>&1 &
+          backend_pid=$!
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8765/healthz/; then
+              kill "$backend_pid"
+              wait "$backend_pid" || true
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/stitchflow-backend.log"
+          kill "$backend_pid" || true
+          exit 1
 
       - name: Install root npm deps
         run: npm ci
@@ -70,7 +102,7 @@ jobs:
             echo "::notice::Unsigned macOS releases are acceptable for free beta distribution, but users must bypass Gatekeeper manually."
           fi
 
-      - name: Build macOS ARM64 ZIP
+      - name: Build macOS ARM64 DMG and ZIP
         env:
           GH_TOKEN: ${{ github.token }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
@@ -92,6 +124,7 @@ jobs:
           python3 -m venv --copies .venv
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install -r requirements.txt
+          .venv/bin/pip install pyinstaller
 
       - name: Download vtracer (Intel macOS)
         run: |
@@ -111,6 +144,37 @@ jobs:
           cd src/frontend
           npm install
           npm run build
+
+      - name: Build frozen Django backend
+        run: |
+          .venv/bin/pyinstaller --noconfirm --clean --distpath dist-backend --workpath build/pyinstaller scripts/desktop_backend.spec
+          test -x dist-backend/stitchflow-backend/stitchflow-backend
+
+      - name: Verify frozen Django backend
+        run: |
+          STITCH_USERDATA="$RUNNER_TEMP/stitchflow-userdata" \
+          STITCH_VENDOR_PATH="$PWD/vendor" \
+          dist-backend/stitchflow-backend/stitchflow-backend --migrate
+
+          STITCH_USERDATA="$RUNNER_TEMP/stitchflow-userdata" \
+          STITCH_VENDOR_PATH="$PWD/vendor" \
+          dist-backend/stitchflow-backend/stitchflow-backend --check
+
+          STITCH_USERDATA="$RUNNER_TEMP/stitchflow-userdata" \
+          STITCH_VENDOR_PATH="$PWD/vendor" \
+          dist-backend/stitchflow-backend/stitchflow-backend --port 8765 > "$RUNNER_TEMP/stitchflow-backend.log" 2>&1 &
+          backend_pid=$!
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8765/healthz/; then
+              kill "$backend_pid"
+              wait "$backend_pid" || true
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/stitchflow-backend.log"
+          kill "$backend_pid" || true
+          exit 1
 
       - name: Install root npm deps
         run: npm ci
@@ -136,7 +200,7 @@ jobs:
             echo "::notice::Unsigned macOS releases are acceptable for free beta distribution, but users must bypass Gatekeeper manually."
           fi
 
-      - name: Build macOS Intel ZIP
+      - name: Build macOS Intel DMG and ZIP
         env:
           GH_TOKEN: ${{ github.token }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
@@ -158,6 +222,7 @@ jobs:
           python -m venv .venv
           .venv\Scripts\pip install --upgrade pip
           .venv\Scripts\pip install -r requirements.txt
+          .venv\Scripts\pip install pyinstaller
 
       - name: Download vtracer (Windows x64)
         run: |
@@ -180,6 +245,38 @@ jobs:
       - name: Build Vite frontend
         shell: bash
         run: cd src/frontend && npm install && npm run build
+
+      - name: Build frozen Django backend
+        run: |
+          .venv\Scripts\pyinstaller --noconfirm --clean --distpath dist-backend --workpath build\pyinstaller scripts\desktop_backend.spec
+          if (!(Test-Path dist-backend\stitchflow-backend\stitchflow-backend.exe)) { throw "Frozen backend missing" }
+
+      - name: Verify frozen Django backend
+        shell: bash
+        run: |
+          STITCH_USERDATA="$RUNNER_TEMP/stitchflow-userdata" \
+          STITCH_VENDOR_PATH="$PWD/vendor" \
+          ./dist-backend/stitchflow-backend/stitchflow-backend.exe --migrate
+
+          STITCH_USERDATA="$RUNNER_TEMP/stitchflow-userdata" \
+          STITCH_VENDOR_PATH="$PWD/vendor" \
+          ./dist-backend/stitchflow-backend/stitchflow-backend.exe --check
+
+          STITCH_USERDATA="$RUNNER_TEMP/stitchflow-userdata" \
+          STITCH_VENDOR_PATH="$PWD/vendor" \
+          ./dist-backend/stitchflow-backend/stitchflow-backend.exe --port 8765 > "$RUNNER_TEMP/stitchflow-backend.log" 2>&1 &
+          backend_pid=$!
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8765/healthz/; then
+              kill "$backend_pid"
+              wait "$backend_pid" || true
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/stitchflow-backend.log"
+          kill "$backend_pid" || true
+          exit 1
 
       - name: Install root npm deps
         run: npm ci

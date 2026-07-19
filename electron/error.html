@@ -2,13 +2,13 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Erreur de démarrage — StitchFlow</title>
+  <title>Erreur de démarrage - StitchFlow</title>
   <style>
     body {
       background: #1a1a2e;
       color: #e2e8f0;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      height: 100vh;
+      min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -18,7 +18,7 @@
       text-align: center;
     }
     h1 { color: #f87171; font-size: 1.5rem; }
-    p { color: #94a3b8; max-width: 500px; line-height: 1.6; }
+    p { color: #94a3b8; max-width: 620px; line-height: 1.6; }
     a { color: #a78bfa; }
     .hint {
       background: #0f172a;
@@ -26,22 +26,39 @@
       border-radius: 8px;
       padding: 16px 24px;
       font-size: 0.85rem;
-      color: #64748b;
-      max-width: 500px;
+      color: #cbd5e1;
+      max-width: 680px;
       text-align: left;
+      word-break: break-word;
     }
-    code { color: #f472b6; font-family: monospace; }
+    code {
+      color: #f9a8d4;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+    }
+    .muted { color: #94a3b8; }
   </style>
 </head>
 <body>
   <h1>Impossible de démarrer StitchFlow</h1>
-  <p>Le serveur Django n'a pas répondu dans les délais attendus.</p>
+  <p>Le serveur Django intégré n'a pas pu démarrer correctement.</p>
   <div class="hint">
-    <strong>Solutions possibles :</strong><br><br>
-    • Vérifiez que Python est installé<br>
-    • Vérifiez que le venv <code>.venv/</code> est présent<br>
-    • Relancez l'application<br><br>
-    En cas de problème persistant, consultez le <a href="https://github.com/Sollvoo/stitchflow">GitHub</a>.
+    <strong>Cause détectée :</strong><br>
+    <code id="reason">Démarrage interrompu avant que le serveur réponde.</code><br><br>
+    <strong>Log de diagnostic :</strong><br>
+    <code id="log-path">Chemin du log indisponible.</code><br><br>
+    <span class="muted">
+      Relancez StitchFlow une fois. Si le problème persiste, envoyez ce fichier de log avec
+      votre demande de support.
+    </span>
   </div>
+  <p><a href="https://github.com/Sollvoo/stitchflow">Ouvrir la page GitHub</a></p>
+  <script>
+    const params = new URLSearchParams(window.location.search)
+    const reason = params.get('reason')
+    const logPath = params.get('log')
+    if (reason) document.getElementById('reason').textContent = reason
+    if (logPath) document.getElementById('log-path').textContent = logPath
+  </script>
 </body>
 </html>
