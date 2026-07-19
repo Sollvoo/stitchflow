@@ -21,21 +21,42 @@ function getResourcesPath() {
     : path.join(__dirname, '..')
 }
 
+function getAppRootPath() {
+  return app.isPackaged
+    ? app.getAppPath()
+    : path.join(__dirname, '..')
+}
+
 function getPythonExecutable() {
   const resourcesPath = getResourcesPath()
+  const appRootPath = getAppRootPath()
   const venvPython = path.join(resourcesPath, '.venv', 'bin', 'python3')
   const venvPythonWin = path.join(resourcesPath, '.venv', 'Scripts', 'python.exe')
+  const devVenvPython = path.join(appRootPath, '.venv', 'bin', 'python3')
+  const devVenvPythonWin = path.join(appRootPath, '.venv', 'Scripts', 'python.exe')
+  const macCandidates = [
+    '/opt/homebrew/bin/python3',
+    '/usr/local/bin/python3',
+    '/usr/bin/python3',
+  ]
 
   if (process.platform === 'win32' && fs.existsSync(venvPythonWin)) return venvPythonWin
+  if (process.platform === 'win32' && fs.existsSync(devVenvPythonWin)) return devVenvPythonWin
   if (fs.existsSync(venvPython)) return venvPython
+  if (fs.existsSync(devVenvPython)) return devVenvPython
+  if (process.platform === 'darwin') {
+    const found = macCandidates.find((candidate) => fs.existsSync(candidate))
+    if (found) return found
+  }
   return 'python3'
 }
 
 function getVendorPath() {
   const resourcesPath = getResourcesPath()
+  const appRootPath = getAppRootPath()
   return app.isPackaged
     ? path.join(process.resourcesPath, 'vendor')
-    : path.join(resourcesPath, 'vendor')
+    : path.join(appRootPath, 'vendor')
 }
 
 async function findFreePort(startPort) {
@@ -70,8 +91,8 @@ async function waitForDjango(port, retries = DJANGO_STARTUP_RETRIES) {
 // ── Démarrage Django ──────────────────────────────────────────────────────────
 
 function startDjango(port) {
-  const resourcesPath = getResourcesPath()
-  const srcPath = path.join(resourcesPath, 'src')
+  const appRootPath = getAppRootPath()
+  const srcPath = path.join(appRootPath, 'src')
   const userDataPath = app.getPath('userData')
   const python = getPythonExecutable()
   const vendorPath = getVendorPath()
@@ -111,8 +132,8 @@ function startDjango(port) {
 // ── Migration Django au premier lancement ─────────────────────────────────────
 
 function runMigrations() {
-  const resourcesPath = getResourcesPath()
-  const srcPath = path.join(resourcesPath, 'src')
+  const appRootPath = getAppRootPath()
+  const srcPath = path.join(appRootPath, 'src')
   const userDataPath = app.getPath('userData')
   const python = getPythonExecutable()
   const vendorPath = getVendorPath()
@@ -141,7 +162,7 @@ function runMigrations() {
 // ── Fenêtre principale ────────────────────────────────────────────────────────
 
 function createWindow(port) {
-  const resourcesPath = getResourcesPath()
+  const appRootPath = getAppRootPath()
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -149,7 +170,7 @@ function createWindow(port) {
     minHeight: 600,
     title: 'StitchFlow',
     backgroundColor: '#F8F3EB',
-    icon: path.join(resourcesPath, 'assets', 'brand', 'icon-256.png'),
+    icon: path.join(appRootPath, 'assets', 'brand', 'icon-256.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -220,9 +241,9 @@ function buildMenu(port) {
 // ── Vérification des dépendances ─────────────────────────────────────────────
 
 function checkDependencies() {
-  const resourcesPath = getResourcesPath()
+  const appRootPath = getAppRootPath()
   const python = getPythonExecutable()
-  const checkScript = path.join(resourcesPath, 'scripts', 'check_deps.py')
+  const checkScript = path.join(appRootPath, 'scripts', 'check_deps.py')
 
   try {
     const result = execFileSync(python, [checkScript], {

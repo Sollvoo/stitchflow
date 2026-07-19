@@ -30,7 +30,7 @@ jobs:
 
       - name: Create venv + install Python deps
         run: |
-          python3 -m venv .venv
+          python3 -m venv --copies .venv
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install -r requirements.txt
 
@@ -56,19 +56,21 @@ jobs:
       - name: Install root npm deps
         run: npm ci
 
-      - name: Require macOS signing secrets for tagged releases
+      - name: Warn when macOS signing secrets are missing
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           missing=0
           for var in CSC_LINK CSC_KEY_PASSWORD APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER APPLE_TEAM_ID; do
             if [ -z "${!var}" ]; then
-              echo "::error::$var is required to sign and notarize macOS releases"
+              echo "::warning::$var is missing; macOS build will be unsigned/not notarized"
               missing=1
             fi
           done
-          test "$missing" -eq 0
+          if [ "$missing" -eq 1 ]; then
+            echo "::notice::Unsigned macOS releases are acceptable for free beta distribution, but users must bypass Gatekeeper manually."
+          fi
 
-      - name: Build macOS ARM64 DMG
+      - name: Build macOS ARM64 ZIP
         env:
           GH_TOKEN: ${{ github.token }}
         run: npm run build:mac-arm
@@ -93,7 +95,7 @@ jobs:
 
       - name: Create venv + install Python deps
         run: |
-          python3 -m venv .venv
+          python3 -m venv --copies .venv
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install -r requirements.txt
 
@@ -119,19 +121,21 @@ jobs:
       - name: Install root npm deps
         run: npm ci
 
-      - name: Require macOS signing secrets for tagged releases
+      - name: Warn when macOS signing secrets are missing
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           missing=0
           for var in CSC_LINK CSC_KEY_PASSWORD APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER APPLE_TEAM_ID; do
             if [ -z "${!var}" ]; then
-              echo "::error::$var is required to sign and notarize macOS releases"
+              echo "::warning::$var is missing; macOS build will be unsigned/not notarized"
               missing=1
             fi
           done
-          test "$missing" -eq 0
+          if [ "$missing" -eq 1 ]; then
+            echo "::notice::Unsigned macOS releases are acceptable for free beta distribution, but users must bypass Gatekeeper manually."
+          fi
 
-      - name: Build macOS Intel DMG
+      - name: Build macOS Intel ZIP
         env:
           GH_TOKEN: ${{ github.token }}
         run: npm run build:mac-intel

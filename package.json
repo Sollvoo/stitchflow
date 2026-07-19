@@ -26,6 +26,7 @@
     "extends": null,
     "appId": "com.stitchflow.desktop",
     "productName": "StitchFlow",
+    "asar": false,
     "afterPack": "scripts/adhoc-sign-macos.js",
     "files": [
       "assets/**/*",
@@ -33,20 +34,30 @@
       "src/**/*",
       "vendor/**/*",
       "scripts/**/*",
-      ".venv/**/*",
       "!src/frontend/node_modules/**/*",
       "!**/__pycache__/**/*",
       "!**/*.pyc",
       "!**/*.pyo",
       "!src/frontend/assets/**/*",
-      "!.venv/lib/python*/site-packages/numba/**/*",
-      "!.venv/lib/python*/site-packages/llvmlite/**/*"
+      "!vendor/poppler-*/Library/share/**/*"
     ],
     "extraResources": [
       {
         "from": "vendor/",
         "to": "vendor/",
         "filter": ["**/*"]
+      },
+      {
+        "from": ".venv/",
+        "to": ".venv/",
+        "filter": [
+          "**/*",
+          "!**/__pycache__/**/*",
+          "!**/*.pyc",
+          "!**/*.pyo",
+          "!lib/python*/site-packages/numba/**/*",
+          "!lib/python*/site-packages/llvmlite/**/*"
+        ]
       }
     ],
     "mac": {
@@ -56,8 +67,9 @@
       "notarize": true,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+      "artifactName": "${productName}-${arch}.${ext}",
       "target": [
-        "dmg"
+        "zip"
       ]
     },
     "dmg": {
