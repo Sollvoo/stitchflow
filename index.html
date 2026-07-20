@@ -262,11 +262,22 @@
 
     .prereq h2 { font-size: 1.4rem; }
     .prereq p { color: var(--text-muted); max-width: 42rem; }
+    .prereq-guide {
+      margin-top: 1rem;
+      padding-left: 1.25rem;
+      color: var(--text-muted);
+    }
+    .prereq-guide li { margin-top: 0.35rem; }
+    .prereq-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
 
     @media (min-width: 720px) {
       .prereq {
-        flex-direction: row;
-        align-items: center;
+        flex-direction: column;
+        align-items: flex-start;
         justify-content: space-between;
         gap: 2rem;
       }
@@ -391,11 +402,18 @@
           <p>
             StitchFlow s'appuie sur le moteur open source <strong>Ink/Stitch</strong>
             (une extension d'Inkscape) pour générer les points de broderie.
-            Installez les deux avant de lancer votre première conversion —
-            comptez cinq minutes, le guide officiel vous accompagne pas à pas.
+            Installez les deux avant de lancer votre première conversion.
           </p>
+          <ol class="prereq-guide">
+            <li>Téléchargez Inkscape pour votre Mac, ouvrez le DMG, puis glissez Inkscape dans Applications.</li>
+            <li>Lancez Inkscape une première fois pour que macOS et Inkscape créent les dossiers nécessaires.</li>
+            <li>Installez Ink/Stitch, relancez Inkscape, puis ouvrez StitchFlow et lancez votre conversion.</li>
+          </ol>
         </div>
-        <a class="btn btn-sage" href="https://inkstitch.org/docs/install/" target="_blank" rel="noopener">Guide d'installation Ink/Stitch</a>
+        <div class="prereq-actions">
+          <a class="btn btn-sage" href="https://inkscape.org/release/inkscape-1.4.2/mac-os-x/" target="_blank" rel="noopener">Télécharger Inkscape</a>
+          <a class="btn btn-sage" href="https://inkstitch.org/fr/docs/install-macos/" target="_blank" rel="noopener">Installer Ink/Stitch</a>
+        </div>
       </div>
     </section>
 
