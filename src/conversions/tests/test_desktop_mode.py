@@ -42,7 +42,7 @@ class DesktopAutoFinalizeTest(TestCase):
     @patch('conversions.services.png_processing.vectorize_to_svg')
     @patch('conversions.services.png_processing.preprocess_image')
     @patch('conversions.services.png_processing.validate_png')
-    def test_desktop_png_auto_finalizes_after_vectorization(
+    def test_desktop_png_waits_for_svg_editor_after_vectorization(
         self, _mock_validate_png, mock_preprocess, mock_vectorize, mock_pipeline
     ):
         with tempfile.TemporaryDirectory() as media_root:
@@ -60,14 +60,6 @@ class DesktopAutoFinalizeTest(TestCase):
             mock_preprocess.return_value = png_path
             mock_vectorize.return_value = tmp_svg
 
-            def complete_job(job, _source_svg_path, start_time=None):
-                job.status = ConversionJob.Status.COMPLETED
-                job.progress_pct = 100
-                job.progress_step = 'Conversion terminée'
-                job.save(update_fields=['status', 'progress_pct', 'progress_step', 'updated_at'])
-
-            mock_pipeline.side_effect = complete_job
-
             with override_settings(MEDIA_ROOT=media_root):
                 job = ConversionJob.objects.create(source_format='png', n_colors=4)
                 job.original_file.name = 'conversions/uploads/test.png'
@@ -76,9 +68,33 @@ class DesktopAutoFinalizeTest(TestCase):
                 process_conversion_job(str(job.id))
 
                 job.refresh_from_db()
-                self.assertEqual(job.status, ConversionJob.Status.COMPLETED)
+                self.assertEqual(job.status, ConversionJob.Status.AWAITING_SVG_VALIDATION)
+                self.assertEqual(job.progress_step, 'En attente de validation')
                 self.assertTrue(job.vectorized_svg_file.name.endswith(f'{job.id}.svg'))
-                mock_pipeline.assert_called_once()
+                mock_pipeline.assert_not_called()
+
+    @override_settings(DESKTOP_MODE=True)
+    @patch('conversions.tasks._run_svg_to_pes_pipeline')
+    def test_desktop_pdf_auto_finalizes_after_vectorization(self, mock_pipeline):
+        with tempfile.TemporaryDirectory() as media_root:
+            source_svg = Path(media_root) / 'pdf-vectorized.svg'
+            source_svg.write_text('<svg xmlns="http://www.w3.org/2000/svg"/>', encoding='utf-8')
+            job = ConversionJob.objects.create(source_format='pdf')
+
+            def complete_job(job, _source_svg_path, start_time=None):
+                job.status = ConversionJob.Status.COMPLETED
+                job.save(update_fields=['status', 'updated_at'])
+
+            mock_pipeline.side_effect = complete_job
+
+            with override_settings(MEDIA_ROOT=media_root):
+                from conversions.tasks import _desktop_auto_finalize_vectorized
+
+                self.assertTrue(_desktop_auto_finalize_vectorized(job, source_svg, 0.0))
+
+            job.refresh_from_db()
+            self.assertEqual(job.status, ConversionJob.Status.COMPLETED)
+            mock_pipeline.assert_called_once()
 
 
 class AnalyzePDFDesktopTest(TestCase):

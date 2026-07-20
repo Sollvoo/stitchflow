@@ -28,6 +28,8 @@ def _desktop_auto_finalize_vectorized(job, source_svg_path: Path, start_time: fl
     """En desktop, enchaîne directement SVG vectorisé -> fichier broderie."""
     if not getattr(settings, 'DESKTOP_MODE', False):
         return False
+    if job.source_format != 'pdf':
+        return False
 
     logger.info(
         '[desktop] auto-finalisation job %s depuis SVG vectorisé %s',

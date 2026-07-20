@@ -4,6 +4,7 @@ Pipeline : validation → nettoyage → suppression fond → quantization → ve
 """
 
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -271,6 +272,16 @@ def _detect_image_type(path: Path, n_colors: int) -> str:
 
 def _find_vtracer_binary() -> str | None:
     """Retourne le chemin du binaire vtracer CLI (vendor/ prioritaire, puis PATH)."""
+    configured = os.environ.get("VTRACER_EXECUTABLE")
+    if configured and Path(configured).exists():
+        return configured
+
+    vendor_path = os.environ.get("STITCH_VENDOR_PATH")
+    if vendor_path:
+        vendor_bin = Path(vendor_path) / ("vtracer.exe" if sys.platform == "win32" else "vtracer")
+        if vendor_bin.exists():
+            return str(vendor_bin)
+
     if _VTRACER_VENDOR.exists():
         return str(_VTRACER_VENDOR)
     return shutil.which("vtracer")

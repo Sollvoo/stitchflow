@@ -34,8 +34,24 @@ SECURE_HSTS_SECONDS = 0
 SECURE_PROXY_SSL_HEADER = None
 USE_X_FORWARDED_HOST = False
 
-# Pas d'auth email en mode desktop
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+# Email desktop : console par défaut, SMTP réel si variables fournies.
+_EMAIL_HOST_USER = os.environ.get('STITCH_EMAIL_HOST_USER') or os.environ.get('EMAIL_HOST_USER', '')
+_EMAIL_HOST_PASSWORD = os.environ.get('STITCH_EMAIL_HOST_PASSWORD') or os.environ.get('EMAIL_HOST_PASSWORD', '')
+if _EMAIL_HOST_USER and _EMAIL_HOST_PASSWORD:
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = os.environ.get('STITCH_EMAIL_HOST') or os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
+    EMAIL_PORT = int(os.environ.get('STITCH_EMAIL_PORT') or os.environ.get('EMAIL_PORT', '587'))
+    EMAIL_USE_TLS = (
+        os.environ.get('STITCH_EMAIL_USE_TLS') or os.environ.get('EMAIL_USE_TLS', 'true')
+    ).lower() in ('1', 'true', 'yes', 'on')
+    EMAIL_HOST_USER = _EMAIL_HOST_USER
+    EMAIL_HOST_PASSWORD = _EMAIL_HOST_PASSWORD
+    DEFAULT_FROM_EMAIL = os.environ.get('STITCH_DEFAULT_FROM_EMAIL') or os.environ.get(
+        'DEFAULT_FROM_EMAIL',
+        f'StitchFlow <{_EMAIL_HOST_USER}>',
+    )
+else:
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
 # ── Base de données dans userData ─────────────────────────────────────────────
 

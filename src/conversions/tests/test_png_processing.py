@@ -13,6 +13,7 @@ from conversions.services.png_processing import (
     _build_svg,
     _color_to_pbm,
     _extract_potrace_paths,
+    _find_vtracer_binary,
     _vectorize_potrace,
     preprocess_image,
     remove_background,
@@ -130,6 +131,14 @@ class RemoveBackgroundTest(TestCase):
 
 
 class VectorizeToSVGTest(TestCase):
+    def test_find_vtracer_binary_uses_desktop_vendor_path(self):
+        with tempfile.TemporaryDirectory() as vendor:
+            binary = Path(vendor) / 'vtracer'
+            binary.write_text('#!/bin/sh\n', encoding='utf-8')
+
+            with patch.dict('os.environ', {'STITCH_VENDOR_PATH': vendor}, clear=False):
+                self.assertEqual(_find_vtracer_binary(), str(binary))
+
     def test_vectorize_produces_svg_file(self):
         p = _tmp_png()
         out = None
