@@ -135,15 +135,31 @@ if _vtracer_bin.exists():
 
 # ── Poppler vendorisé ─────────────────────────────────────────────────────────
 
-_poppler_candidates = sorted(_VENDOR.glob('poppler-*/Library/bin')) if _VENDOR.exists() else []
-if _poppler_candidates:
-    POPPLER_BIN_PATH = _poppler_candidates[-1]
-elif sys.platform == 'darwin':
+def _find_poppler_bin_path() -> Path | None:
     import shutil as _shutil2
-    _pdftocairo = _shutil2.which('pdftocairo')
-    POPPLER_BIN_PATH = Path(_pdftocairo).parent if _pdftocairo else None
-else:
-    POPPLER_BIN_PATH = None
+
+    if sys.platform == 'darwin':
+        versioned_bins = sorted(_VENDOR.glob('poppler-*/bin')) if _VENDOR.exists() else []
+        vendor_candidates = [
+            _VENDOR / 'poppler-macos' / 'bin',
+            *versioned_bins,
+        ]
+        for candidate in vendor_candidates:
+            if (candidate / 'pdftocairo').exists():
+                return candidate
+        _pdftocairo = _shutil2.which('pdftocairo')
+        return Path(_pdftocairo).parent if _pdftocairo else None
+
+    if sys.platform == 'win32':
+        vendor_candidates = sorted(_VENDOR.glob('poppler-*/Library/bin')) if _VENDOR.exists() else []
+        for candidate in vendor_candidates:
+            if (candidate / 'pdftocairo.exe').exists():
+                return candidate
+
+    return None
+
+
+POPPLER_BIN_PATH = _find_poppler_bin_path()
 
 # ── Logs ──────────────────────────────────────────────────────────────────────
 

@@ -8,6 +8,7 @@ import logging
 import re
 import shutil
 import subprocess
+import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -30,7 +31,7 @@ class GradientNotSupportedError(Exception):
 
 
 def _find_pdftocairo() -> str | None:
-    """Cherche pdftocairo dans PATH puis dans vendor/ (Windows)."""
+    """Cherche pdftocairo dans PATH puis dans le vendor adapté à la plateforme."""
     found = shutil.which("pdftocairo")
     if found:
         return found
@@ -39,7 +40,8 @@ def _find_pdftocairo() -> str | None:
 
         vendor_bin = getattr(djsettings, "POPPLER_BIN_PATH", None)
         if vendor_bin:
-            candidate = Path(vendor_bin) / "pdftocairo.exe"
+            exe_name = "pdftocairo.exe" if sys.platform == "win32" else "pdftocairo"
+            candidate = Path(vendor_bin) / exe_name
             if candidate.exists():
                 return str(candidate)
     except Exception:

@@ -4,6 +4,7 @@ Appelé par Electron main.js avant de démarrer Django.
 Retourne un JSON avec le statut de chaque dépendance.
 """
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -56,11 +57,21 @@ def check_poppler() -> dict:
     if found:
         return {'found': True, 'path': found}
 
-    # Chercher dans vendor/
     script_dir = Path(__file__).parent.parent
-    vendor_candidates = sorted(script_dir.glob('vendor/poppler-*/Library/bin/pdftocairo*'))
-    if vendor_candidates:
-        return {'found': True, 'path': str(vendor_candidates[-1])}
+    vendor = Path(os.environ.get('STITCH_VENDOR_PATH', script_dir / 'vendor'))
+    if sys.platform == 'darwin':
+        vendor_candidates = [
+            vendor / 'poppler-macos' / 'bin' / 'pdftocairo',
+            *sorted(vendor.glob('poppler-*/bin/pdftocairo')),
+        ]
+    elif sys.platform == 'win32':
+        vendor_candidates = sorted(vendor.glob('poppler-*/Library/bin/pdftocairo.exe'))
+    else:
+        vendor_candidates = sorted(vendor.glob('poppler-*/bin/pdftocairo'))
+
+    for candidate in vendor_candidates:
+        if candidate.exists() and os.access(candidate, os.X_OK):
+            return {'found': True, 'path': str(candidate)}
 
     return {
         'found': False,

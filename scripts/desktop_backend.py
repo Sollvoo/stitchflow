@@ -75,9 +75,19 @@ def _check_inkstitch() -> dict:
 
 def _check_poppler() -> dict:
     vendor = Path(os.environ.get("STITCH_VENDOR_PATH", "vendor"))
-    vendor_candidates = sorted(vendor.glob("poppler-*/Library/bin/pdftocairo*"))
-    if vendor_candidates:
-        return {"found": True, "path": str(vendor_candidates[-1])}
+    if sys.platform == "darwin":
+        vendor_candidates = [
+            vendor / "poppler-macos" / "bin" / "pdftocairo",
+            *sorted(vendor.glob("poppler-*/bin/pdftocairo")),
+        ]
+    elif sys.platform == "win32":
+        vendor_candidates = sorted(vendor.glob("poppler-*/Library/bin/pdftocairo.exe"))
+    else:
+        vendor_candidates = sorted(vendor.glob("poppler-*/bin/pdftocairo"))
+
+    for candidate in vendor_candidates:
+        if candidate.exists() and os.access(candidate, os.X_OK):
+            return {"found": True, "path": str(candidate)}
 
     found = shutil.which("pdftocairo")
     if found:

@@ -36,6 +36,33 @@ jobs:
           tar -xzf /tmp/vtracer.tar.gz -C vendor/
           chmod +x vendor/vtracer
 
+      - name: Bundle Poppler (ARM64 macOS)
+        run: |
+          brew install poppler dylibbundler
+          POPPLER_PREFIX="$(brew --prefix poppler)"
+          mkdir -p vendor/poppler-macos/bin vendor/poppler-macos/lib vendor/poppler-macos/share
+          rsync -a "$POPPLER_PREFIX/bin/" vendor/poppler-macos/bin/
+          rsync -a "$POPPLER_PREFIX/lib/" vendor/poppler-macos/lib/
+          if [ -d "$POPPLER_PREFIX/share/poppler" ]; then
+            rsync -a "$POPPLER_PREFIX/share/poppler/" vendor/poppler-macos/share/poppler/
+          fi
+          chmod +x vendor/poppler-macos/bin/pdf*
+          rm -rf vendor/poppler-macos/lib-bundled
+          mkdir -p vendor/poppler-macos/lib-bundled
+          for tool in pdftocairo pdftoppm pdfinfo; do
+            BUNDLE_RESET_FLAG=""
+            if [ "$tool" = "pdftocairo" ]; then BUNDLE_RESET_FLAG="-b"; fi
+            dylibbundler \
+              -od \
+              $BUNDLE_RESET_FLAG \
+              -x "vendor/poppler-macos/bin/$tool" \
+              -d "vendor/poppler-macos/lib-bundled" \
+              -p "@executable_path/../lib"
+          done
+          rm -rf vendor/poppler-macos/lib
+          mv vendor/poppler-macos/lib-bundled vendor/poppler-macos/lib
+          vendor/poppler-macos/bin/pdftocairo -v
+
       - name: Setup Node 20
         uses: actions/setup-node@v4
         with:
@@ -133,6 +160,33 @@ jobs:
           mkdir -p vendor
           tar -xzf /tmp/vtracer.tar.gz -C vendor/
           chmod +x vendor/vtracer
+
+      - name: Bundle Poppler (Intel macOS)
+        run: |
+          brew install poppler dylibbundler
+          POPPLER_PREFIX="$(brew --prefix poppler)"
+          mkdir -p vendor/poppler-macos/bin vendor/poppler-macos/lib vendor/poppler-macos/share
+          rsync -a "$POPPLER_PREFIX/bin/" vendor/poppler-macos/bin/
+          rsync -a "$POPPLER_PREFIX/lib/" vendor/poppler-macos/lib/
+          if [ -d "$POPPLER_PREFIX/share/poppler" ]; then
+            rsync -a "$POPPLER_PREFIX/share/poppler/" vendor/poppler-macos/share/poppler/
+          fi
+          chmod +x vendor/poppler-macos/bin/pdf*
+          rm -rf vendor/poppler-macos/lib-bundled
+          mkdir -p vendor/poppler-macos/lib-bundled
+          for tool in pdftocairo pdftoppm pdfinfo; do
+            BUNDLE_RESET_FLAG=""
+            if [ "$tool" = "pdftocairo" ]; then BUNDLE_RESET_FLAG="-b"; fi
+            dylibbundler \
+              -od \
+              $BUNDLE_RESET_FLAG \
+              -x "vendor/poppler-macos/bin/$tool" \
+              -d "vendor/poppler-macos/lib-bundled" \
+              -p "@executable_path/../lib"
+          done
+          rm -rf vendor/poppler-macos/lib
+          mv vendor/poppler-macos/lib-bundled vendor/poppler-macos/lib
+          vendor/poppler-macos/bin/pdftocairo -v
 
       - name: Setup Node 20
         uses: actions/setup-node@v4

@@ -82,7 +82,9 @@ def convert_pdf_to_png(path: Path, dpi: int = 300) -> Path:
 
         vendor_bin = getattr(settings, "POPPLER_BIN_PATH", None)
         if vendor_bin and not shutil.which("pdftoppm"):
-            poppler_path = str(vendor_bin)
+            pdftoppm_name = "pdftoppm.exe" if sys.platform == "win32" else "pdftoppm"
+            if (Path(vendor_bin) / pdftoppm_name).exists():
+                poppler_path = str(vendor_bin)
     except Exception:
         pass
 

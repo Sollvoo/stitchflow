@@ -19,15 +19,11 @@ hiddenimports += [
     "decouple",
     "dj_database_url",
     "pdf2image",
-    "PIL",
-    "PIL.Image",
-    "PIL.ImageEnhance",
-    "PIL.ImageFilter",
-    "PIL.ImageOps",
     "numpy",
     "pyembroidery",
     "vtracer",
 ]
+hiddenimports += collect_submodules("PIL")
 for package in (
     "conversions",
     "core",

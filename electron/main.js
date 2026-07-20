@@ -122,13 +122,25 @@ function getBackendCommand(args) {
 
 function getBackendEnv(port = null) {
   const srcPath = getSrcPath()
+  const vendorPath = getVendorPath()
+  const popplerMacosBin = path.join(vendorPath, 'poppler-macos', 'bin')
+  const popplerMacosLib = path.join(vendorPath, 'poppler-macos', 'lib')
   const env = {
     ...process.env,
     DJANGO_SETTINGS_MODULE: 'stitchflow.settings_desktop',
     PYTHONPATH: srcPath,
     STITCH_USERDATA: app.getPath('userData'),
-    STITCH_VENDOR_PATH: getVendorPath(),
+    STITCH_VENDOR_PATH: vendorPath,
     PYTHONUNBUFFERED: '1',
+  }
+  if (process.platform === 'darwin' && fs.existsSync(popplerMacosBin)) {
+    env.PATH = `${popplerMacosBin}:${env.PATH || ''}`
+    if (fs.existsSync(popplerMacosLib)) {
+      env.DYLD_FALLBACK_LIBRARY_PATH = [
+        popplerMacosLib,
+        env.DYLD_FALLBACK_LIBRARY_PATH,
+      ].filter(Boolean).join(':')
+    }
   }
   if (port) env.STITCH_PORT = String(port)
   return env
@@ -145,6 +157,7 @@ function usefulEnv(env) {
     STITCH_USERDATA: env.STITCH_USERDATA,
     STITCH_VENDOR_PATH: env.STITCH_VENDOR_PATH,
     STITCH_PORT: env.STITCH_PORT,
+    DYLD_FALLBACK_LIBRARY_PATH: env.DYLD_FALLBACK_LIBRARY_PATH,
     PATH: env.PATH,
   }
 }

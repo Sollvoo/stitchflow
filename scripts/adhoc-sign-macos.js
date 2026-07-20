@@ -29,6 +29,20 @@ exports.default = async function afterPack(context) {
     throw new Error(`App bundle not found for ad hoc signing: ${appPath}`)
   }
 
+  const resourcesPath = path.join(appPath, 'Contents', 'Resources')
+  const executableDirs = [
+    path.join(resourcesPath, 'vendor', 'poppler-macos', 'bin'),
+    path.join(resourcesPath, 'vendor'),
+  ]
+  for (const dir of executableDirs) {
+    if (!fs.existsSync(dir)) continue
+    for (const entry of fs.readdirSync(dir)) {
+      if (entry.startsWith('pdf') || entry === 'vtracer') {
+        fs.chmodSync(path.join(dir, entry), 0o755)
+      }
+    }
+  }
+
   execFileSync('codesign', ['--force', '--deep', '--sign', '-', appPath], {
     stdio: 'inherit',
   })
