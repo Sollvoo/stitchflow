@@ -43,10 +43,10 @@ def check_inkstitch() -> dict:
 
     return {
         'found': False,
-        'install_url': 'https://inkstitch.org/docs/install/',
+        'install_url': 'https://sollvoo.github.io/stitchflow/#prerequis',
         'message': (
-            'Ink/Stitch introuvable. Installez Inkscape puis l\'extension Ink/Stitch '
-            'depuis https://inkstitch.org'
+            'Ink/Stitch introuvable. Installez Inkscape, ouvrez-le une première fois, '
+            'puis installez Ink/Stitch depuis le guide StitchFlow.'
         ),
     }
 

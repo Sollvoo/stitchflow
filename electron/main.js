@@ -11,6 +11,7 @@ const DJANGO_BIND_HOST = '127.0.0.1'
 const DJANGO_BROWSER_HOST = 'stitchflow.localhost'
 const DJANGO_STARTUP_RETRIES = 120
 const DJANGO_RETRY_INTERVAL_MS = 500
+const INSTALL_GUIDE_URL = 'https://sollvoo.github.io/stitchflow/#prerequis'
 
 app.commandLine.appendSwitch('host-resolver-rules', `MAP ${DJANGO_BROWSER_HOST} ${DJANGO_BIND_HOST}`)
 app.setName('StitchFlow')
@@ -442,8 +443,8 @@ function buildMenu(port) {
       label: 'Aide',
       submenu: [
         {
-          label: 'Guide d\'installation Ink/Stitch',
-          click: () => shell.openExternal('https://inkstitch.org/docs/install/'),
+          label: 'Guide d\'installation',
+          click: () => shell.openExternal(INSTALL_GUIDE_URL),
         },
         {
           label: 'Ouvrir le dossier des logs',
@@ -509,23 +510,26 @@ function checkDependencies() {
 }
 
 function showInkstitchMissingDialog() {
-  dialog.showMessageBoxSync({
+  const selected = dialog.showMessageBoxSync({
     type: 'warning',
     title: 'Ink/Stitch non trouvé',
-    message: 'Ink/Stitch n\'est pas installé',
+    message: 'Inkscape ou Ink/Stitch n\'est pas installé',
     detail: [
-      'StitchFlow nécessite l\'extension Ink/Stitch pour convertir vos fichiers en broderie.',
+      'StitchFlow nécessite Inkscape et l\'extension Ink/Stitch pour convertir vos fichiers en broderie.',
       '',
       'Pour l\'installer :',
-      '1. Téléchargez Inkscape depuis inkscape.org',
-      '2. Installez l\'extension Ink/Stitch depuis inkstitch.org/docs/install/',
+      '1. Installez Inkscape, ouvrez-le une première fois, puis fermez-le.',
+      '2. Installez Ink/Stitch.',
+      '3. Relancez StitchFlow et lancez votre conversion.',
       '',
       `Log de démarrage : ${logFilePath || ensureLogger()}`,
     ].join('\n'),
     buttons: ['Ouvrir le guide d\'installation', 'Continuer sans Ink/Stitch'],
     defaultId: 0,
   })
-  shell.openExternal('https://inkstitch.org/docs/install/')
+  if (selected === 0) {
+    shell.openExternal(INSTALL_GUIDE_URL)
+  }
 }
 
 function showPdfDepsMissingDialog(deps) {
